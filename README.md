@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Restaurant Supply & Expense CRM
+
+A dashboard for tracking restaurant purchases, expenses, inventory, vendors, and
+vendor accounts payable — built from monthly bill PDFs. Currently configured for
+**Junction 14** — the restaurant name, address, and GSTIN live in **Settings**
+(`/settings`), not hardcoded, so this can be re-branded for another restaurant
+without touching code.
+
+## Stack
+
+- Next.js 16 (App Router) + TypeScript + Tailwind CSS
+- Prisma 7 + SQLite (local file database, `dev.db`)
+- Recharts for charts, `jspdf`/`jspdf-autotable` for PDF reports and receipts,
+  `exceljs` for multi-sheet Excel exports, `papaparse` for CSV export
+- Claude (Anthropic API) for reading and structuring new bill PDFs
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The database (`dev.db`) is already seeded with 27 invoices from `bills.pdf`
+(Oct 2025 – Jul 2026), all from a single vendor, Shanker Lal Suresh Kumar.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Re-seeding the database
 
-## Learn More
+The seed script reads three JSON files transcribed from the source PDF and
+loads them via `src/lib/import.ts` (the same import path the in-app PDF
+upload uses):
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run seed
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This wipes and rebuilds all tables — only run it if you want to reset to the
+original 27-invoice dataset.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Uploading new months
 
-## Deploy on Vercel
+Go to **Upload Bills** in the sidebar. This calls Claude to read a new PDF
+and extract every bill, then lets you review before saving. It requires an
+Anthropic API key:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Get a key at [console.anthropic.com](https://console.anthropic.com)
+2. Add it to `.env`: `ANTHROPIC_API_KEY="sk-ant-..."`
+3. Restart the dev server
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Without a key, every other part of the app (dashboard, bills, inventory,
+vendors, products, analytics, CSV/PDF export, editing records) still works —
+only the upload page needs it.
+
+## Notes on the data model
+
+- **Bills are the source of truth.** Expenses and inventory are computed
+  from `Bill` + `BillLineItem`, not stored as separate duplicate records —
+  so editing a bill's category or a line item automatically updates the
+  Expenses and Analytics views.
+- **Current stock is inferred from purchases minus returns**, since the
+  source bills only record purchases, not kitchen consumption. Treat stock
+  values as "what's been bought and not yet returned," not a live physical
+  count — use the quick-adjust control on the Inventory page to correct it
+  against an actual count.
+- **Reorder levels** default to ~25% of a product's first purchase quantity
+  so low-stock alerts aren't meaningless from day one — edit them per
+  product once you know real consumption patterns.
+- **Product categories** are inferred from product names with a keyword
+  classifier and are always editable in the Product Catalog — restaurant
+  trade names are inconsistent enough that some will need correcting.
+- Records extracted with any uncertainty (illegible bill numbers, unclear
+  product names) are flagged with a `*` in tables and a banner on their
+  detail page.

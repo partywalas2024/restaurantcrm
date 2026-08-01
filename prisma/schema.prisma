@@ -1,0 +1,307 @@
+// Restaurant Supply & Expense CRM — data model
+// Bills are the source of truth; Expenses/Inventory are derived views over
+// Bill + BillLineItem so purchase data never has to be entered twice.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIAL
+  UNKNOWN
+}
+
+enum BillType {
+  INVOICE
+  RETURN
+}
+
+enum ProductCategory {
+  RAW_MATERIALS
+  GRAINS_FLOURS
+  PULSES_DALS
+  SPICES_MASALAS
+  OILS_GHEE
+  DAIRY
+  CONDIMENTS_SAUCES
+  SNACKS_NAMKEEN
+  BEVERAGES
+  PACKAGING
+  CLEANING_SUPPLIES
+  KITCHEN_SUPPLIES
+  UTILITIES
+  TRANSPORT
+  MAINTENANCE
+  OTHER
+}
+
+enum MovementType {
+  PURCHASE
+  RETURN
+  ADJUSTMENT
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  OTHER
+}
+
+model Vendor {
+  id                  String   @id @default(cuid())
+  name                String   @unique
+  phone               String?
+  address             String?
+  gstin               String?
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  bills               Bill[]
+  products            Product[]
+  payments            Payment[]
+}
+
+// A payment made to a vendor. Combined with that vendor's Bills, this is the
+// ledger: INVOICE bills and RETURN bills are debits/credits on account, and
+// Payments are credits — the running balance is always derived, never
+// hand-typed, so it can't drift from reality.
+model Payment {
+  id        String        @id @default(cuid())
+  vendorId  String
+  date      DateTime
+  amount    Float
+  method    PaymentMethod @default(OTHER)
+  reference String?
+  notes     String?
+  createdAt DateTime      @default(now())
+
+  vendor    Vendor        @relation(fields: [vendorId], references: [id])
+
+  @@index([vendorId])
+  @@index([date])
+}
+
+model Product {
+  id                String          @id @default(cuid())
+  name              String          @unique
+  category          ProductCategory @default(OTHER)
+  unit              String
+  hsn               String?
+  currentStock      Float           @default(0)
+  reorderLevel      Float           @default(0)
+  lastCostPrice     Float           @default(0)
+  vendorId          String?
+  lastPurchaseDate  DateTime?
+  isUncertain       Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  vendor            Vendor?         @relation(fields: [vendorId], references: [id])
+  lineItems         BillLineItem[]
+  movements         InventoryMovement[]
+  recipeUses        RecipeIngredient[]
+  wasteEntries      WasteEntry[]
+
+  @@index([category])
+}
+
+model Bill {
+  id              String        @id @default(cuid())
+  billNumber      String
+  billNumberRaw   String?
+  type            BillType      @default(INVOICE)
+  date            DateTime
+  dueDate         DateTime?
+  vendorId        String
+  subtotal        Float
+  sgst            Float         @default(0)
+  cgst            Float         @default(0)
+  roundoff        Float         @default(0)
+  grandTotal      Float
+  paymentStatus   PaymentStatus @default(UNKNOWN)
+  category        ProductCategory @default(OTHER)
+  notes           String?
+  isUncertain     Boolean       @default(false)
+  sourceFile      String?
+  sourcePages     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  vendor          Vendor        @relation(fields: [vendorId], references: [id])
+  lineItems       BillLineItem[]
+  movements       InventoryMovement[]
+
+  @@index([date])
+  @@index([vendorId])
+}
+
+model BillLineItem {
+  id           String   @id @default(cuid())
+  billId       String
+  productId    String
+  productNameRaw String
+  unit         String
+  hsn          String?
+  mrp          Float    @default(0)
+  quantity     Float
+  rate         Float
+  discount     Float    @default(0)
+  sgstRate     Float    @default(0)
+  cgstRate     Float    @default(0)
+  amount       Float
+
+  bill         Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  product      Product  @relation(fields: [productId], references: [id])
+
+  @@index([billId])
+  @@index([productId])
+}
+
+model InventoryMovement {
+  id        String       @id @default(cuid())
+  productId String
+  billId    String?
+  type      MovementType
+  quantity  Float
+  date      DateTime
+  notes     String?
+  createdAt DateTime     @default(now())
+
+  product   Product      @relation(fields: [productId], references: [id])
+  bill      Bill?        @relation(fields: [billId], references: [id])
+
+  @@index([productId])
+  @@index([date])
+}
+
+// Singleton (id is always "default") holding the branding for whichever
+// restaurant is running this instance — used on the sidebar, PDF/Excel
+// reports, ledger statements, and payment receipts. Keeping it as data
+// rather than a hardcoded name is what makes the app reusable per-restaurant
+// later without code changes.
+model RestaurantProfile {
+  id        String   @id @default("default")
+  name      String
+  address   String?
+  phone     String?
+  gstin     String?
+  updatedAt DateTime @updatedAt
+}
+
+// ---- Sales & Growth ----
+// Revenue side of the business. Sales data comes either from a PetPooja
+// export (imported via /sales/import, which fans out into DailySales +
+// MenuItemSale rows) or manual daily entry. Recipes link menu items back to
+// the same Products already tracked on the purchase side, so food cost /
+// margin per dish is computed from real ingredient prices, not guessed.
+
+model MenuItem {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  category     String?
+  sellingPrice Float    @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  recipe       RecipeIngredient[]
+  sales        MenuItemSale[]
+}
+
+model RecipeIngredient {
+  id         String @id @default(cuid())
+  menuItemId String
+  productId  String
+  quantity   Float
+  unit       String
+
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@index([menuItemId])
+  @@index([productId])
+}
+
+// One row per calendar day — the aggregate revenue/channel/payment-mode
+// summary for that day, whether it came from a PetPooja import or manual
+// entry. `date` is unique so re-importing or re-entering a day updates it
+// instead of duplicating.
+model DailySales {
+  id                 String   @id @default(cuid())
+  date               DateTime @unique
+  dineInRevenue      Float    @default(0)
+  deliveryRevenue    Float    @default(0)
+  takeawayRevenue    Float    @default(0)
+  otherRevenue       Float    @default(0)
+  cashAmount         Float    @default(0)
+  upiAmount          Float    @default(0)
+  cardAmount         Float    @default(0)
+  otherPaymentAmount Float    @default(0)
+  covers             Int      @default(0)
+  source             String   @default("MANUAL")
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  items              MenuItemSale[]
+
+  @@index([date])
+}
+
+model MenuItemSale {
+  id           String @id @default(cuid())
+  dailySalesId String
+  menuItemId   String
+  quantity     Float
+  revenue      Float
+
+  dailySales   DailySales @relation(fields: [dailySalesId], references: [id], onDelete: Cascade)
+  menuItem     MenuItem   @relation(fields: [menuItemId], references: [id])
+
+  @@index([dailySalesId])
+  @@index([menuItemId])
+}
+
+enum LaborCategory {
+  WAGES
+  SALARIES
+  TIPS_PAYOUT
+  OTHER
+}
+
+model LaborCost {
+  id        String        @id @default(cuid())
+  date      DateTime
+  category  LaborCategory @default(WAGES)
+  amount    Float
+  notes     String?
+  createdAt DateTime      @default(now())
+
+  @@index([date])
+}
+
+model WasteEntry {
+  id            String   @id @default(cuid())
+  date          DateTime
+  productId     String
+  quantity      Float
+  estimatedCost Float    @default(0)
+  reason        String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  product       Product  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([date])
+}

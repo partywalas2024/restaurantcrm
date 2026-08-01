@@ -1,26 +1,84 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f7fb;
+  --surface: #ffffff;
+  --surface-muted: #f1f2f6;
+  --foreground: #14161f;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+
+  --brand: #b4451f;
+  --brand-dark: #8c3417;
+  --brand-light: #fdece3;
+
+  --ok: #16a34a;
+  --ok-bg: #ecfdf3;
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
+  --crit: #dc2626;
+  --crit-bg: #fef2f2;
+  --info: #2563eb;
+  --info-bg: #eff6ff;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-light: var(--brand-light);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-crit: var(--crit);
+  --color-crit-bg: var(--crit-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0e0f13;
+    --surface: #16181f;
+    --surface-muted: #1c1f28;
+    --foreground: #f2f3f5;
+    --muted: #9aa0ac;
+    --border: #262a35;
+
+    --brand: #e2734a;
+    --brand-dark: #f0916c;
+    --brand-light: #2a1a13;
+
+    --ok: #34d399;
+    --ok-bg: #0d2318;
+    --warn: #fbbf24;
+    --warn-bg: #2a2107;
+    --crit: #f87171;
+    --crit-bg: #2a1212;
+    --info: #60a5fa;
+    --info-bg: #0f1f33;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
 }
