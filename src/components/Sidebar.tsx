@@ -22,7 +22,11 @@ import {
   LineChart,
   Users,
   Trash2,
+  ShieldCheck,
+  LogOut,
 } from "lucide-react";
+import { signOutAction } from "@/lib/auth-actions";
+import type { CurrentUser } from "@/lib/auth";
 
 const SECTIONS = [
   {
@@ -60,11 +64,14 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ isAdmin, onNavigate }: { isAdmin: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const sections = isAdmin
+    ? [...SECTIONS, { label: "Administration", items: [{ href: "/users", label: "Users & Access", icon: ShieldCheck }] }]
+    : SECTIONS;
   return (
     <nav className="flex flex-1 flex-col gap-4 px-3">
-      {SECTIONS.map((section) => (
+      {sections.map((section) => (
         <div key={section.label}>
           <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">{section.label}</p>
           <div className="flex flex-col gap-1">
@@ -106,8 +113,29 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function Sidebar({ restaurantName }: { restaurantName: string }) {
+function UserFooter({ user }: { user: CurrentUser }) {
+  return (
+    <div className="mx-3 mt-4 rounded-lg bg-surface-muted px-3 py-3">
+      <p className="truncate text-sm font-medium">{user.name}</p>
+      <p className="truncate text-xs text-muted">
+        @{user.username}
+        {user.role === "ADMIN" && " · Admin"}
+      </p>
+      <form action={signOutAction}>
+        <button
+          type="submit"
+          className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-background"
+        >
+          <LogOut size={13} /> Sign out
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export function Sidebar({ restaurantName, user }: { restaurantName: string; user: CurrentUser }) {
   const [open, setOpen] = useState(false);
+  const isAdmin = user.role === "ADMIN";
 
   return (
     <>
@@ -140,7 +168,8 @@ export function Sidebar({ restaurantName }: { restaurantName: string }) {
                 <X size={20} />
               </button>
             </div>
-            <NavLinks onNavigate={() => setOpen(false)} />
+            <NavLinks isAdmin={isAdmin} onNavigate={() => setOpen(false)} />
+            <UserFooter user={user} />
           </div>
         </div>
       )}
@@ -151,10 +180,8 @@ export function Sidebar({ restaurantName }: { restaurantName: string }) {
           <UtensilsCrossed size={22} className="text-brand" />
           <span>{restaurantName}</span>
         </div>
-        <NavLinks />
-        <div className="mx-3 mt-4 rounded-lg bg-surface-muted px-3 py-3 text-xs text-muted">
-          Restaurant Management CRM
-        </div>
+        <NavLinks isAdmin={isAdmin} />
+        <UserFooter user={user} />
       </aside>
     </>
   );

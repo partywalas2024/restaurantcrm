@@ -5,8 +5,12 @@ import { getRestaurantProfile } from "@/lib/settings";
 import { formatDate } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import type { ProductCategory } from "@/generated/prisma/enums";
+import { apiAuthGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const sp = req.nextUrl.searchParams;
   const kind = sp.get("kind") ?? "bills";
   const profile = await getRestaurantProfile();

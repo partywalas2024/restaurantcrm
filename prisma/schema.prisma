@@ -305,3 +305,28 @@ model WasteEntry {
   @@index([productId])
   @@index([date])
 }
+
+// ---- Access control ----
+// Sign-in gates the whole app. Admins register everyone else — there is no
+// public sign-up. Passwords are stored as scrypt hashes (see src/lib/auth.ts),
+// never in plain text, and the session itself is a signed JWT cookie.
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  name         String
+  email        String?
+  role         UserRole  @default(USER)
+  passwordHash String
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([username])
+}

@@ -1,12 +1,14 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
+import { ChangePasswordForm } from "@/components/UserForms";
 import { getRestaurantProfile } from "@/lib/settings";
 import { updateRestaurantProfile } from "@/lib/actions";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const profile = await getRestaurantProfile();
+  const [profile, user] = await Promise.all([getRestaurantProfile(), requireUser()]);
 
   return (
     <div>
@@ -37,6 +39,13 @@ export default async function SettingsPage() {
             Save Changes
           </button>
         </form>
+      </Card>
+
+      <Card title="Your Password" className="mt-4 max-w-lg">
+        <p className="mb-4 text-xs text-muted">
+          Signed in as <span className="font-medium text-foreground">{user.name}</span> (@{user.username}).
+        </p>
+        <ChangePasswordForm />
       </Card>
 
       <p className="mt-4 max-w-lg rounded-lg border border-info/30 bg-info-bg px-3 py-2 text-xs text-info">

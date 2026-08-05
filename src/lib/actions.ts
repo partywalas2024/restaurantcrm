@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth";
 import type { PaymentMethod, PaymentStatus, ProductCategory } from "@/generated/prisma/enums";
 
 export async function updateBill(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   const paymentStatus = formData.get("paymentStatus") as PaymentStatus | null;
   const category = formData.get("category") as ProductCategory | null;
@@ -30,6 +32,7 @@ export async function updateBill(formData: FormData) {
 }
 
 export async function updateProduct(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   const category = formData.get("category") as ProductCategory | null;
   const reorderLevel = formData.get("reorderLevel");
@@ -55,6 +58,7 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function updateVendor(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   const name = (formData.get("name") as string | null)?.trim();
   const phone = formData.get("phone") as string | null;
@@ -86,6 +90,7 @@ export async function updateVendor(formData: FormData) {
 }
 
 export async function createVendor(formData: FormData) {
+  await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Vendor name is required.");
   const phone = (formData.get("phone") as string | null) || null;
@@ -103,6 +108,7 @@ export async function createVendor(formData: FormData) {
 }
 
 export async function recordPayment(formData: FormData) {
+  await requireUser();
   const vendorId = String(formData.get("vendorId"));
   const date = new Date(String(formData.get("date")));
   const amount = Number(formData.get("amount"));
@@ -125,6 +131,7 @@ export async function recordPayment(formData: FormData) {
 }
 
 export async function deletePayment(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   const vendorId = String(formData.get("vendorId"));
 
@@ -137,6 +144,7 @@ export async function deletePayment(formData: FormData) {
 }
 
 export async function adjustStock(formData: FormData) {
+  await requireUser();
   const productId = String(formData.get("productId"));
   const delta = Number(formData.get("delta"));
   const notes = (formData.get("notes") as string | null) ?? "";
@@ -165,6 +173,7 @@ export async function adjustStock(formData: FormData) {
 }
 
 export async function updateRestaurantProfile(formData: FormData) {
+  await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Restaurant name is required.");
   const address = (formData.get("address") as string | null) || null;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { classifyChannel, classifyPayment, type SalesField } from "@/lib/sales-import";
+import { apiAuthGuard } from "@/lib/auth";
 
 function parseDate(value: string): Date | null {
   const trimmed = value.trim();
@@ -34,6 +35,9 @@ function parseNumber(value: string): number {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const body = (await req.json()) as {
     rows: Record<string, string>[];
     mapping: Partial<Record<SalesField, string>>;

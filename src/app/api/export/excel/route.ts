@@ -16,6 +16,7 @@ import { getRestaurantProfile } from "@/lib/settings";
 import { formatDate, formatMonth } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import type { ProductCategory } from "@/generated/prisma/enums";
+import { apiAuthGuard } from "@/lib/auth";
 
 const BILL_COLUMNS = [
   { header: "Bill Number", key: "billNumber", width: 16 },
@@ -38,6 +39,9 @@ async function resolveMonth(requested: string | null) {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const sp = req.nextUrl.searchParams;
   const kind = sp.get("kind") ?? "bills";
   const wb = newWorkbook();

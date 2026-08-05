@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { importBills, type ExtractedBill, type ExtractedVendor } from "@/lib/import";
+import { apiAuthGuard } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   try {
     const body = (await req.json()) as {
       vendor: ExtractedVendor;

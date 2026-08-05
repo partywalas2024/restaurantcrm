@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAvailableMonths, getOverview, getInsights, getVendors } from "@/lib/data";
 import { CATEGORY_LABELS } from "@/lib/categories";
+import { apiAuthGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const monthParam = req.nextUrl.searchParams.get("month");
   const months = await getAvailableMonths();
   const month = monthParam && months.includes(monthParam) ? monthParam : months[0];

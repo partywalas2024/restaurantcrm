@@ -3,8 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getRestaurantProfile } from "@/lib/settings";
 import { formatDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments";
+import { apiAuthGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const paymentId = req.nextUrl.searchParams.get("paymentId");
   if (!paymentId) return NextResponse.json({ error: "paymentId is required." }, { status: 400 });
 

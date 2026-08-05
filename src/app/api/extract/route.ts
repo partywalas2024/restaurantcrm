@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { apiAuthGuard } from "@/lib/auth";
 
 export const maxDuration = 300;
 
@@ -60,6 +61,9 @@ const EXTRACT_TOOL = {
 };
 
 export async function POST(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

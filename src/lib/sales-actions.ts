@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth";
 import type { LaborCategory } from "@/generated/prisma/enums";
 
 function revalidateSalesPages() {
@@ -14,6 +15,7 @@ function revalidateSalesPages() {
 }
 
 export async function createMenuItem(formData: FormData) {
+  await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Menu item name is required.");
   const category = (formData.get("category") as string | null) || null;
@@ -25,6 +27,7 @@ export async function createMenuItem(formData: FormData) {
 }
 
 export async function updateMenuItem(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   const category = (formData.get("category") as string | null) || null;
@@ -37,6 +40,7 @@ export async function updateMenuItem(formData: FormData) {
 }
 
 export async function deleteMenuItem(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   await prisma.menuItem.delete({ where: { id } });
   revalidateSalesPages();
@@ -44,6 +48,7 @@ export async function deleteMenuItem(formData: FormData) {
 }
 
 export async function addRecipeIngredient(formData: FormData) {
+  await requireUser();
   const menuItemId = String(formData.get("menuItemId"));
   const productId = String(formData.get("productId"));
   const quantity = Number(formData.get("quantity"));
@@ -59,6 +64,7 @@ export async function addRecipeIngredient(formData: FormData) {
 }
 
 export async function removeRecipeIngredient(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   const menuItemId = String(formData.get("menuItemId"));
   await prisma.recipeIngredient.delete({ where: { id } });
@@ -68,6 +74,7 @@ export async function removeRecipeIngredient(formData: FormData) {
 
 /** Creates or updates the single DailySales row for a date, plus any per-item quantities sold that day. */
 export async function saveDailySales(formData: FormData) {
+  await requireUser();
   const dateStr = String(formData.get("date"));
   const date = new Date(dateStr);
 
@@ -136,12 +143,14 @@ export async function saveDailySales(formData: FormData) {
 }
 
 export async function deleteDailySales(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   await prisma.dailySales.delete({ where: { id } });
   revalidateSalesPages();
 }
 
 export async function recordLaborCost(formData: FormData) {
+  await requireUser();
   const date = new Date(String(formData.get("date")));
   const category = formData.get("category") as LaborCategory;
   const amount = Number(formData.get("amount"));
@@ -155,6 +164,7 @@ export async function recordLaborCost(formData: FormData) {
 }
 
 export async function deleteLaborCost(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   await prisma.laborCost.delete({ where: { id } });
   revalidatePath("/labor");
@@ -162,6 +172,7 @@ export async function deleteLaborCost(formData: FormData) {
 }
 
 export async function recordWaste(formData: FormData) {
+  await requireUser();
   const date = new Date(String(formData.get("date")));
   const productId = String(formData.get("productId"));
   const quantity = Number(formData.get("quantity"));
@@ -186,6 +197,7 @@ export async function recordWaste(formData: FormData) {
 }
 
 export async function deleteWaste(formData: FormData) {
+  await requireUser();
   const id = String(formData.get("id"));
   await prisma.wasteEntry.delete({ where: { id } });
   revalidatePath("/waste");

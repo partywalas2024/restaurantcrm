@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import ExcelJS from "exceljs";
 import { guessMapping } from "@/lib/sales-import";
+import { apiAuthGuard } from "@/lib/auth";
 
 const MAX_ROWS = 20000;
 
 export async function POST(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   if (!file) return NextResponse.json({ error: "No file uploaded." }, { status: 400 });

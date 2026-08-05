@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getVendorLedger } from "@/lib/data";
 import { formatDate } from "@/lib/format";
+import { apiAuthGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const denied = await apiAuthGuard();
+  if (denied) return denied;
+
   const vendorId = req.nextUrl.searchParams.get("vendorId");
   if (!vendorId) return NextResponse.json({ error: "vendorId is required." }, { status: 400 });
 
