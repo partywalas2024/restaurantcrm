@@ -1,3 +1,11 @@
+// Server actions for authentication and user administration.
+//
+// Sign-in deliberately returns one generic failure message for every cause
+// (unknown user, wrong password, deactivated account) so the form cannot be
+// used to enumerate valid usernames, and repeated failures lock the account
+// briefly. Admin actions additionally guard against an admin removing the last
+// remaining admin and locking the business out of its own CRM.
+
 "use server";
 
 import { revalidatePath } from "next/cache";

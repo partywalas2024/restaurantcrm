@@ -1,3 +1,5 @@
+// Vendor ledger as JSON, for the client-side PDF generator.
+
 import { NextRequest, NextResponse } from "next/server";
 import { getVendorLedger } from "@/lib/data";
 import { formatDate } from "@/lib/format";

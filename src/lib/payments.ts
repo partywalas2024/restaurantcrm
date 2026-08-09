@@ -1,3 +1,6 @@
+// Display labels for payment methods, kept beside the enum so the ledger,
+// receipts and the payment form never drift apart in wording.
+
 import type { PaymentMethod } from "@/generated/prisma/enums";
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

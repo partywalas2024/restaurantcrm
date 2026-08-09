@@ -1,3 +1,8 @@
+// Display formatting helpers — Indian numbering (lakh/crore), currency, dates
+// and month keys.
+//
+// Centralised so ₹12,34,567 renders the same way on every screen and export.
+
 export function formatINR(amount: number, opts: { decimals?: boolean } = {}): string {
   const { decimals = false } = opts;
   return new Intl.NumberFormat("en-IN", {

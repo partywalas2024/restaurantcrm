@@ -1,3 +1,9 @@
+// Second half of the PetPooja import: applies the confirmed column mapping and
+// writes DailySales and MenuItemSale rows.
+//
+// Menu items are matched by name and created when unseen, so importing the same
+// export twice reuses existing dishes instead of duplicating the menu.
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { classifyChannel, classifyPayment, type SalesField } from "@/lib/sales-import";

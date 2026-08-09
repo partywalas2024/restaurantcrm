@@ -1,3 +1,10 @@
+// Server actions for the purchase side — bills, products, vendors, payments,
+// stock adjustments and the restaurant profile.
+//
+// Each action re-checks the session with `requireUser()`. That is not
+// belt-and-braces: server actions are individually addressable HTTP endpoints,
+// so the sign-in gate in proxy.ts does not protect them on its own.
+
 "use server";
 
 import { revalidatePath } from "next/cache";

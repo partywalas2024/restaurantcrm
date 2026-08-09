@@ -1,3 +1,6 @@
+// Vendor ledger export, laid out like a bank statement: every bill as a debit,
+// every payment as a credit, with a running balance.
+
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import { getVendorLedger } from "@/lib/data";

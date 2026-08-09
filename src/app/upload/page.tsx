@@ -78,7 +78,7 @@ export default function UploadPage() {
 
   return (
     <div>
-      <PageHeader title="Upload Bills" description="Upload a new month's bills PDF — Claude reads and structures every invoice automatically." />
+      <PageHeader title="Upload Bills" description="Upload a bills PDF or a photo of an invoice — OpenAI reads and structures every bill automatically." />
 
       {status === "idle" || status === "extracting" || status === "error" ? (
         <Card>
@@ -92,12 +92,12 @@ export default function UploadPage() {
             }}
           >
             <UploadCloud size={32} className="text-brand" />
-            <p className="text-sm font-medium">Drag & drop a PDF here, or click to choose a file</p>
-            <p className="text-xs text-muted">One or more bills per PDF, up to ~40 pages</p>
+            <p className="text-sm font-medium">Drag & drop a file here, or click to choose one</p>
+            <p className="text-xs text-muted">PDF (one or more bills, up to ~40 pages) or a photo — JPEG, PNG or WebP</p>
             <input
               ref={inputRef}
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
               className="hidden"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
@@ -127,7 +127,7 @@ export default function UploadPage() {
           >
             {status === "extracting" ? (
               <>
-                <Loader2 size={16} className="animate-spin" /> Reading bills with Claude…
+                <Loader2 size={16} className="animate-spin" /> Reading bills with OpenAI…
               </>
             ) : (
               "Extract Bills"

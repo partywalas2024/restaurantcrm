@@ -1,3 +1,10 @@
+// Turns extracted bill data into database rows.
+//
+// Shared by the OpenAI upload flow and the one-off seed script, so both paths
+// produce identical records. Products are matched on a normalized name, which
+// is what lets the same item spelled differently across bills accumulate into
+// one inventory line rather than fragmenting into near-duplicates.
+
 import { prisma } from "@/lib/prisma";
 import { normalizeProductName } from "@/lib/normalize";
 import { inferCategory } from "@/lib/categories";

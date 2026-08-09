@@ -1,3 +1,9 @@
+// The restaurant profile — the single row that supplies the name, address and
+// GSTIN shown in the sidebar and printed on every report, ledger and receipt.
+//
+// Stored as a singleton row rather than hardcoded so the app can be handed to
+// another restaurant without a code change.
+
 import { prisma } from "@/lib/prisma";
 
 const DEFAULT_NAME = "Junction 14";

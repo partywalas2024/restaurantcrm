@@ -1,3 +1,5 @@
+// Monthly report data as JSON, consumed by the client-side PDF report builder.
+
 import { NextRequest, NextResponse } from "next/server";
 import { getAvailableMonths, getOverview, getInsights, getVendors } from "@/lib/data";
 import { CATEGORY_LABELS } from "@/lib/categories";

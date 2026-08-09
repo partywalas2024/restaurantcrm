@@ -1,3 +1,12 @@
+// Read model for the revenue side: sales, menu costing, labor, waste and P&L.
+//
+// The interesting piece is theoretical food cost. Rather than treating raw
+// purchases as COGS, each menu item carries a recipe of Products, so cost of
+// goods is computed from what was actually sold at real ingredient prices.
+// Because recipes are optional, `getProfitAndLoss` reports food-cost % only
+// over the portion of revenue whose items have recipes, and tells the caller
+// how complete that coverage is instead of quietly understating cost.
+
 import { prisma } from "@/lib/prisma";
 import { monthKey } from "@/lib/format";
 import { NON_FOOD_CATEGORIES } from "@/lib/categories";
@@ -109,19 +118,6 @@ export async function getSalesForMonth(month: string) {
     dailyTrend,
     daysRecorded: rows.length,
   };
-}
-
-export async function getRevenueTrend() {
-  const rows = await prisma.dailySales.findMany({ select: { date: true, dineInRevenue: true, deliveryRevenue: true, takeawayRevenue: true, otherRevenue: true } });
-  const map = new Map<string, number>();
-  for (const r of rows) {
-    const key = monthKey(r.date);
-    const total = r.dineInRevenue + r.deliveryRevenue + r.takeawayRevenue + r.otherRevenue;
-    map.set(key, (map.get(key) ?? 0) + total);
-  }
-  return Array.from(map.entries())
-    .sort((a, b) => (a[0] > b[0] ? 1 : -1))
-    .map(([month, amount]) => ({ month, amount }));
 }
 
 export async function getMenuItemPerformance(month?: string) {

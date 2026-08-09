@@ -1,3 +1,12 @@
+// The authorization layer: session cookies plus the guards that every page,
+// server action and route handler is expected to call.
+//
+// `src/proxy.ts` only inspects the session cookie and cannot verify that the
+// account still exists or is still active. These functions re-read the user on
+// each render pass, so deactivating someone takes effect immediately rather
+// than whenever their token happens to expire. This module is `server-only`;
+// the token primitives proxy.ts needs live in `session.ts` instead.
+
 import "server-only";
 
 import { cache } from "react";
@@ -69,8 +78,15 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   });
   if (!user || !user.isActive) return null;
 
-  const { isActive: _isActive, ...safe } = user;
-  return safe;
+  // Built explicitly rather than spread, so `isActive` (and anything added to
+  // the User model later) can't leak into what callers hand to the client.
+  return {
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
 });
 
 export async function requireUser(): Promise<CurrentUser> {

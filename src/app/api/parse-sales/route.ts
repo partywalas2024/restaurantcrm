@@ -1,3 +1,7 @@
+// First half of the PetPooja import: parses the uploaded CSV/XLSX, guesses
+// which column means what, and returns headers plus a preview so the user can
+// correct the mapping before anything is saved.
+
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import ExcelJS from "exceljs";

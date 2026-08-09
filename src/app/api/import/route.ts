@@ -1,3 +1,5 @@
+// Saves reviewed bills to the database — the confirm step of the upload flow.
+
 import { NextRequest, NextResponse } from "next/server";
 import { importBills, type ExtractedBill, type ExtractedVendor } from "@/lib/import";
 import { apiAuthGuard } from "@/lib/auth";

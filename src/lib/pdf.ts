@@ -1,15 +1,29 @@
+// Shared chrome for every PDF the app hands to a vendor or accountant —
+// monthly reports, ledger statements and payment receipts. Keeping the
+// letterhead here is what makes those documents look like one set of papers
+// from one restaurant rather than three unrelated exports.
+
+import type { jsPDF } from "jspdf";
+
+/** The brand terracotta, as jsPDF's RGB triplet. */
 export const BRAND_RGB: [number, number, number] = [180, 69, 31];
 
+/**
+ * Rupees for PDF output. Deliberately "Rs." rather than the ₹ glyph: jsPDF's
+ * built-in fonts have no rupee sign and would render it as a blank box.
+ */
 export function inr(n: number): string {
   return `Rs. ${Math.round(n).toLocaleString("en-IN")}`;
 }
 
 type RestaurantInfo = { name: string; address?: string | null; phone?: string | null; gstin?: string | null };
 
-/** Draws a consistent letterhead (restaurant name + contact line + doc title) and returns the Y to start content below it. */
+/**
+ * Draws the letterhead (restaurant name, contact line, rule, document title)
+ * and returns the Y coordinate where body content should start.
+ */
 export function addLetterhead(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  doc: any,
+  doc: jsPDF,
   restaurant: RestaurantInfo,
   docTitle: string,
   subtitle?: string

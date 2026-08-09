@@ -1,3 +1,6 @@
+// CSV export. `?kind=` selects the dataset (bills, expenses, inventory, ...),
+// mirroring whatever the calling page is showing.
+
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import { getBills, getVendors, getProducts } from "@/lib/data";

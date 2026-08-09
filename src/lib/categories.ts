@@ -19,11 +19,11 @@ export const CATEGORY_LABELS: Record<ProductCategory, string> = {
   OTHER: "Other / Groceries",
 };
 
-// Food-ingredient categories feed theoretical COGS (via recipe costing) on
-// the P&L; everything else is "other operating expense". Splitting this way
-// avoids double-counting — ingredient cost is captured through what was
+// Food-ingredient categories feed theoretical COGS on the P&L via recipe
+// costing; everything else counts as "other operating expense". Splitting this
+// way avoids double-counting — ingredient cost reaches the P&L through what was
 // actually sold, not through raw purchase totals.
-export const FOOD_CATEGORIES: ProductCategory[] = [
+const FOOD_CATEGORIES: ProductCategory[] = [
   "RAW_MATERIALS",
   "GRAINS_FLOURS",
   "PULSES_DALS",
@@ -35,15 +35,12 @@ export const FOOD_CATEGORIES: ProductCategory[] = [
   "BEVERAGES",
 ];
 
-export const NON_FOOD_CATEGORIES: ProductCategory[] = [
-  "PACKAGING",
-  "CLEANING_SUPPLIES",
-  "KITCHEN_SUPPLIES",
-  "UTILITIES",
-  "TRANSPORT",
-  "MAINTENANCE",
-  "OTHER",
-];
+// Derived rather than hand-listed: a new ProductCategory added to the schema
+// then defaults to non-food and shows up in operating expenses, instead of
+// falling through both lists and silently vanishing from the P&L.
+export const NON_FOOD_CATEGORIES: ProductCategory[] = (
+  Object.keys(CATEGORY_LABELS) as ProductCategory[]
+).filter((category) => !FOOD_CATEGORIES.includes(category));
 
 // Deterministic color per category, reused for charts + badges everywhere.
 export const CATEGORY_COLORS: Record<ProductCategory, string> = {
@@ -95,10 +92,3 @@ export function inferCategory(productName: string): ProductCategory {
   }
   return "OTHER";
 }
-
-export const STATUS_COLORS = {
-  ok: { text: "text-ok", bg: "bg-ok-bg", border: "border-ok/30" },
-  warn: { text: "text-warn", bg: "bg-warn-bg", border: "border-warn/30" },
-  crit: { text: "text-crit", bg: "bg-crit-bg", border: "border-crit/30" },
-  info: { text: "text-info", bg: "bg-info-bg", border: "border-info/30" },
-} as const;

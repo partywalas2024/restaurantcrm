@@ -1,3 +1,9 @@
+// Server actions for the revenue side — menu items, recipes, daily sales,
+// labor and waste.
+//
+// Like the purchase-side actions, every entry point re-checks the session:
+// server actions are reachable independently of the pages that render them.
+
 "use server";
 
 import { revalidatePath } from "next/cache";

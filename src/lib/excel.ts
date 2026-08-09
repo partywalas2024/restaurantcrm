@@ -1,3 +1,9 @@
+// Excel workbook builders shared by every export route.
+//
+// Keeps sheet styling, column widths and the download response identical
+// across exports, so the workbooks look like one product rather than a dozen
+// separately-authored spreadsheets.
+
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 

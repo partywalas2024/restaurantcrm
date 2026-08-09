@@ -1,3 +1,11 @@
+// Read model for the purchase side of the business: bills, vendors, products,
+// inventory and the vendor ledger.
+//
+// Bills are the source of truth. Expenses, inventory levels and category
+// spending are all derived here rather than stored, so purchase data is only
+// ever entered once. Every function is a plain server-side read — callers are
+// React Server Components, which is why nothing here is memoized or cached.
+
 import { prisma } from "@/lib/prisma";
 import { monthKey, formatINR } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";

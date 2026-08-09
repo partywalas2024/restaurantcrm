@@ -1,3 +1,9 @@
+// Excel export — the multi-sheet counterpart to the CSV route.
+//
+// Each `?kind=` builds a workbook with a summary sheet plus one sheet per
+// section, so a month's figures arrive as a single file an accountant can open
+// rather than a folder of loose CSVs.
+
 import { NextRequest, NextResponse } from "next/server";
 import {
   getBills,

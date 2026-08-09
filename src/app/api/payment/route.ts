@@ -1,3 +1,5 @@
+// Single payment record as JSON, used to render a payment receipt PDF.
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRestaurantProfile } from "@/lib/settings";
