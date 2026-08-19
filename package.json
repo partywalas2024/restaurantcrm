@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:users": "tsx prisma/seed-users.ts"
+    "seed:users": "tsx prisma/seed-users.ts",
+    "merge-vendors": "tsx scripts/merge-vendors.ts"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.9.1",

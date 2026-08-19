@@ -46,21 +46,55 @@ export type ExtractedVendor = {
   gstin?: string;
 };
 
+
+/**
+ * Vendor names as printed vary in case and spacing between bills — the same
+ * supplier arrived once as "Shanker Lal Suresh Kumar" and once as
+ * "SHANKER LAL SURESH KUMAR", which an exact-match upsert turned into two
+ * accounts with a split ledger. Matching on a normalized form keeps one
+ * supplier as one account.
+ */
+function vendorKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+async function resolveVendor(info: ExtractedVendor) {
+  const key = vendorKey(info.name);
+  const existing = await prisma.vendor.findMany({
+    select: { id: true, name: true, phone: true, address: true, gstin: true },
+  });
+  const match = existing.find((v) => vendorKey(v.name) === key);
+
+  if (!match) {
+    return prisma.vendor.create({
+      data: {
+        name: info.name.trim(),
+        phone: info.phone,
+        address: info.address,
+        gstin: info.gstin,
+      },
+    });
+  }
+
+  // Fill in details this bill supplies that the existing record is missing,
+  // without overwriting anything already recorded.
+  const fill: { phone?: string; address?: string; gstin?: string } = {};
+  if (!match.phone && info.phone) fill.phone = info.phone;
+  if (!match.address && info.address) fill.address = info.address;
+  if (!match.gstin && info.gstin) fill.gstin = info.gstin;
+
+  if (Object.keys(fill).length > 0) {
+    return prisma.vendor.update({ where: { id: match.id }, data: fill });
+  }
+  return prisma.vendor.findUniqueOrThrow({ where: { id: match.id } });
+}
+
 export async function importBills(
   vendorInfo: ExtractedVendor,
   bills: ExtractedBill[],
   sourceFile?: string
 ) {
-  const vendor = await prisma.vendor.upsert({
-    where: { name: vendorInfo.name },
-    update: {},
-    create: {
-      name: vendorInfo.name,
-      phone: vendorInfo.phone,
-      address: vendorInfo.address,
-      gstin: vendorInfo.gstin,
-    },
-  });
+  const vendor = await resolveVendor(vendorInfo);
 
   const productCache = new Map<string, string>(); // normalized name -> product id
   let billsCreated = 0;

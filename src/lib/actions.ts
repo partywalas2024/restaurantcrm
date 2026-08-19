@@ -106,6 +106,16 @@ export async function createVendor(formData: FormData) {
   const gstin = (formData.get("gstin") as string | null) || null;
   const notes = (formData.get("notes") as string | null) || null;
 
+  // Same normalized match the bill importer uses, so adding a vendor by hand
+  // can't create a second account for a supplier that already exists under a
+  // different capitalisation.
+  const key = name.toLowerCase().replace(/\s+/g, " ");
+  const existing = await prisma.vendor.findMany({ select: { id: true, name: true } });
+  const clash = existing.find((v) => v.name.trim().toLowerCase().replace(/\s+/g, " ") === key);
+  if (clash) {
+    redirect(`/vendors/${clash.id}?exists=${encodeURIComponent(clash.name)}`);
+  }
+
   const vendor = await prisma.vendor.create({
     data: { name, phone, address, gstin, notes },
   });
