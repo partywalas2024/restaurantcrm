@@ -9,7 +9,8 @@
 import "server-only";
 
 import OpenAI, { toFile } from "openai";
-import { checkBill, type ExtractedBill, type ExtractedVendor } from "@/lib/import";
+import type { ExtractedBill, ExtractedVendor } from "@/lib/import";
+import { checkBill } from "@/lib/bill-check";
 
 /** Override in .env if you want a different model (e.g. a newer or cheaper one). */
 const DEFAULT_MODEL = "gpt-5.5";

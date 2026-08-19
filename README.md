@@ -52,7 +52,7 @@ Sales ──► MenuItemSale ──► MenuItem ──► RecipeIngredient ─�
 | **Inventory** | Stock levels, low-stock and out-of-stock alerts, manual adjustment |
 | **Vendors** | Vendor list, per-vendor ledger, payment recording, PDF receipts |
 | **Balance Sheet** | Stock value against outstanding payables |
-| **Upload Bills** | Reads a PDF or photo of bills via OpenAI, re-checks the arithmetic, and shows everything for approval before saving |
+| **Upload Bills** | Reads a PDF or photo of bills via OpenAI, re-checks the arithmetic, and shows everything for editing and approval before saving |
 | **Add Bill** | Enter a bill by hand when there's no document to scan |
 | **Users & Access** | Admin-managed accounts (no public sign-up) |
 
@@ -130,6 +130,7 @@ src/
 │   ├── session.ts        JWT primitives (shared with proxy.ts)
 │   ├── password.ts       scrypt hashing (shared with the seed script)
 │   ├── import.ts         Extracted bills → database rows
+│   ├── bill-check.ts     Arithmetic verification (shared server + browser)
 │   ├── openai-extract.ts PDF/photo → structured bills, via OpenAI
 │   ├── sales-import.ts   PetPooja export column mapping
 │   ├── categories.ts     Product categorisation + food/non-food split
@@ -185,11 +186,19 @@ Defined in [`prisma/schema.prisma`](prisma/schema.prisma). The main entities:
 - **Uncertain extractions are flagged** with a `*` in tables and a banner on the
   record, rather than being silently accepted.
 - **Every extracted bill is re-checked arithmetically** before you see it
-  (`checkBill` in `src/lib/import.ts`): line items must sum to the subtotal,
+  (`checkBill` in `src/lib/bill-check.ts`): line items must sum to the subtotal,
   subtotal plus tax must equal the grand total, and each row's quantity × rate
   must equal its amount. Reading a bill is fallible — a smudged digit becomes a
   wrong number in the books — so the totals are re-derived rather than trusted,
-  and nothing saves until a human ticks the confirmation.
+  and nothing saves until a human ticks the confirmation. Every figure on the
+  review screen is editable — the person holding the paper bill is the
+  authority — and the warnings recompute as you type, so a correction visibly
+  clears the flag. `bill-check.ts` is free of Prisma precisely so the same rules
+  run server-side and in the browser.
+- **Vendors are matched case-insensitively.** The same supplier arriving as
+  "SHANKER LAL SURESH KUMAR" on one bill and "Shanker Lal Suresh Kumar" on
+  another would otherwise open two accounts and split the ledger.
+  `npm run merge-vendors` repairs records already split that way.
 - **Non-food purchases become operating expenses**; food purchases do not, since
   ingredient cost already reaches the P&L through recipes. `NON_FOOD_CATEGORIES`
   is derived from `FOOD_CATEGORIES` so a category added later cannot fall
@@ -206,6 +215,7 @@ Defined in [`prisma/schema.prisma`](prisma/schema.prisma). The main entities:
 | `npm start` | Serve the production build |
 | `npm run lint` | ESLint |
 | `npm run seed:users` | Create the initial admin / junction14 accounts (re-runnable; never overwrites an existing password) |
+| `npm run merge-vendors` | Report duplicate vendor records; `-- --apply` merges them |
 
 The original 27 invoices were loaded once via the same `src/lib/import.ts` path
 the upload flow uses, and now live in `dev.db`. There is no re-seed script for
