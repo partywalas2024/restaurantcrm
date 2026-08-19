@@ -9,10 +9,10 @@
 import "server-only";
 
 import OpenAI, { toFile } from "openai";
-import type { ExtractedBill, ExtractedVendor } from "@/lib/import";
+import { checkBill, type ExtractedBill, type ExtractedVendor } from "@/lib/import";
 
 /** Override in .env if you want a different model (e.g. a newer or cheaper one). */
-const DEFAULT_MODEL = "gpt-4.1";
+const DEFAULT_MODEL = "gpt-5.5";
 
 export const SUPPORTED_TYPES: Record<string, string> = {
   "application/pdf": "PDF",
@@ -144,7 +144,7 @@ function undef<T>(value: T | null): T | undefined {
 }
 
 function normalize(raw: RawResult): { vendor: ExtractedVendor; bills: ExtractedBill[] } {
-  return {
+  const result: { vendor: ExtractedVendor; bills: ExtractedBill[] } = {
     vendor: {
       name: raw.vendor.name,
       phone: undef(raw.vendor.phone),
@@ -173,6 +173,14 @@ function normalize(raw: RawResult): { vendor: ExtractedVendor; bills: ExtractedB
       })),
     })),
   };
+
+  // Re-derive the totals ourselves rather than trusting the transcription, so a
+  // misread digit surfaces at review instead of quietly entering the books.
+  for (const bill of result.bills) {
+    bill.warnings = checkBill(bill);
+  }
+
+  return result;
 }
 
 export async function extractBillsFromFile(

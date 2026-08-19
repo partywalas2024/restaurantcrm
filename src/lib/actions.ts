@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { importBills, type ExtractedBill, type ExtractedItem } from "@/lib/import";
 import type { PaymentMethod, PaymentStatus, ProductCategory } from "@/generated/prisma/enums";
 
 export async function updateBill(formData: FormData) {
@@ -194,4 +195,90 @@ export async function updateRestaurantProfile(formData: FormData) {
   });
 
   revalidatePath("/", "layout");
+}
+
+/**
+ * Creates a bill entered by hand.
+ *
+ * Routed through `importBills` — the same path the upload flow uses — so a
+ * manual bill produces identical records: the vendor is reused or created,
+ * products are matched on their normalized name, stock moves, and the ledger
+ * updates. Entering one by hand and scanning one should be indistinguishable
+ * afterwards.
+ */
+export async function createManualBill(formData: FormData) {
+  await requireUser();
+
+  const vendorName = String(formData.get("vendorName") ?? "").trim();
+  const billNumber = String(formData.get("billNumber") ?? "").trim();
+  const date = String(formData.get("date") ?? "").trim();
+  if (!vendorName) throw new Error("Vendor is required.");
+  if (!billNumber) throw new Error("Bill number is required.");
+  if (!date) throw new Error("Bill date is required.");
+
+  const num = (key: string) => {
+    const raw = formData.get(key);
+    const n = Number(raw ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // Line items arrive as parallel arrays (itemName[], itemQty[], ...).
+  const names = formData.getAll("itemName").map(String);
+  const units = formData.getAll("itemUnit").map(String);
+  const hsns = formData.getAll("itemHsn").map(String);
+  const qtys = formData.getAll("itemQty").map((v) => Number(v) || 0);
+  const rates = formData.getAll("itemRate").map((v) => Number(v) || 0);
+
+  const items: ExtractedItem[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i]?.trim();
+    if (!name) continue; // skip blank rows the user left behind
+    items.push({
+      name,
+      unit: units[i]?.trim() || "PCS",
+      hsn: hsns[i]?.trim() || undefined,
+      qty: qtys[i],
+      rate: rates[i],
+      amount: Math.round(qtys[i] * rates[i] * 100) / 100,
+    });
+  }
+  if (items.length === 0) throw new Error("Add at least one line item.");
+
+  const subtotal = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
+  const sgst = num("sgst");
+  const cgst = num("cgst");
+  const roundoff = num("roundoff");
+  const grandTotal = Math.round((subtotal + sgst + cgst + roundoff) * 100) / 100;
+
+  const bill: ExtractedBill = {
+    billNumber,
+    type: formData.get("type") === "RETURN" ? "RETURN" : "INVOICE",
+    date,
+    dueDate: String(formData.get("dueDate") ?? "").trim() || undefined,
+    subtotal,
+    sgst,
+    cgst,
+    roundoff,
+    grandTotal,
+    notes: String(formData.get("notes") ?? "").trim() || undefined,
+    items,
+  };
+
+  await importBills(
+    {
+      name: vendorName,
+      phone: String(formData.get("vendorPhone") ?? "").trim() || undefined,
+      gstin: String(formData.get("vendorGstin") ?? "").trim() || undefined,
+    },
+    [bill],
+    "manual entry",
+  );
+
+  revalidatePath("/bills");
+  revalidatePath("/");
+  revalidatePath("/expenses");
+  revalidatePath("/inventory");
+  revalidatePath("/vendors");
+  revalidatePath("/analytics");
+  redirect("/bills");
 }

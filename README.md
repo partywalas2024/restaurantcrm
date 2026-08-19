@@ -52,7 +52,8 @@ Sales ──► MenuItemSale ──► MenuItem ──► RecipeIngredient ─�
 | **Inventory** | Stock levels, low-stock and out-of-stock alerts, manual adjustment |
 | **Vendors** | Vendor list, per-vendor ledger, payment recording, PDF receipts |
 | **Balance Sheet** | Stock value against outstanding payables |
-| **Upload Bills** | Reads a PDF or photo of bills via OpenAI and extracts every invoice |
+| **Upload Bills** | Reads a PDF or photo of bills via OpenAI, re-checks the arithmetic, and shows everything for approval before saving |
+| **Add Bill** | Enter a bill by hand when there's no document to scan |
 | **Users & Access** | Admin-managed accounts (no public sign-up) |
 
 Every screen exports to **CSV**, **Excel** (multi-sheet) and **PDF** on the
@@ -92,8 +93,8 @@ SESSION_SECRET="..."
 # Only needed for the Upload Bills page. Everything else works without it.
 OPENAI_API_KEY=""
 
-# Optional — override the model used to read bills (default: gpt-4.1)
-# OPENAI_MODEL="gpt-4.1"
+# Optional — override the model used to read bills (default: gpt-5.5)
+# OPENAI_MODEL="gpt-5.5"
 ```
 
 ---
@@ -183,6 +184,12 @@ Defined in [`prisma/schema.prisma`](prisma/schema.prisma). The main entities:
   alerts are meaningful on day one. Tune them once real consumption is known.
 - **Uncertain extractions are flagged** with a `*` in tables and a banner on the
   record, rather than being silently accepted.
+- **Every extracted bill is re-checked arithmetically** before you see it
+  (`checkBill` in `src/lib/import.ts`): line items must sum to the subtotal,
+  subtotal plus tax must equal the grand total, and each row's quantity × rate
+  must equal its amount. Reading a bill is fallible — a smudged digit becomes a
+  wrong number in the books — so the totals are re-derived rather than trusted,
+  and nothing saves until a human ticks the confirmation.
 - **Non-food purchases become operating expenses**; food purchases do not, since
   ingredient cost already reaches the P&L through recipes. `NON_FOOD_CATEGORIES`
   is derived from `FOOD_CATEGORIES` so a category added later cannot fall

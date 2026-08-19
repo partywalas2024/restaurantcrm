@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -39,7 +40,17 @@ export default async function BillsPage({
       <PageHeader
         title="Bills & Purchases"
         description={`${bills.length} bill${bills.length === 1 ? "" : "s"} · ${formatINR(totalAmount)} total`}
-        actions={<ExportButton kind="bills" searchParams={sp} />}
+        actions={
+          <>
+            <Link
+              href="/bills/new"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+            >
+              <Plus size={15} /> Add Bill
+            </Link>
+            <ExportButton kind="bills" searchParams={sp} />
+          </>
+        }
       />
 
       <Card className="mb-5">

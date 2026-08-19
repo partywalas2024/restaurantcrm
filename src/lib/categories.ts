@@ -70,7 +70,7 @@ const RULES: [RegExp, ProductCategory][] = [
   [/\b(silver foil|clean film|duster|magic brush|foil|packaging|pouch|box)\b/i, "PACKAGING"],
   [/\b(nirma|surf|detergent|soap|phenyl|sanitizer|cleaning)\b/i, "CLEANING_SUPPLIES"],
   [/\b(ghee|oil tin|mustard oil|olive|oilve|refined oil)\b/i, "OILS_GHEE"],
-  [/\b(dal |daal |urad|arhar|chana(?! kabuli)|moger|masoor|rajma|kabuli|moong)\b/i, "PULSES_DALS"],
+  [/\b(dal|daal|urad|arhar|toor|tur|chana(?! kabuli)|moger|masoor|rajma|kabuli|moong)\b/i, "PULSES_DALS"],
   [/\b(aata|atta|maida|besan|rice|suji|poha|maaze strach|corn flour)\b/i, "GRAINS_FLOURS"],
   [
     /\b(jeera|dhaniya|haldi|mirchi|masala|kalongi|methi|elaichi|cardemom|cardamom|clove|dalchini|black paper|pepper|ajwain|rai|hing|tejpata|garam masala|kasturi|red chilli|green chilli(?! sauce)|zeera|saunf)\b/i,
@@ -79,7 +79,7 @@ const RULES: [RegExp, ProductCategory][] = [
   [/\b(sauce|vinegar|ketchup|soya sauce|chutney|pickle|achaar)\b/i, "CONDIMENTS_SAUCES"],
   [/\b(kaju|magaj|namkin|biscuit|kitkat|oreo|papad|boondi|noodels|noodles|fussili|penne|pasta|snack|bidam|pista|peanut|badi)\b/i, "SNACKS_NAMKEEN"],
   [/\b(tea|coffee|honey|kewra|gulab jal|drink|juice|orange|water bot)\b/i, "BEVERAGES"],
-  [/\b(mayonnaise|cheese|butter|milk|dairy|mc favourita|go moz)\b/i, "DAIRY"],
+  [/\b(paneer|mayonnaise|cheese|butter|milk|curd|dahi|cream|dairy|mc favourita|go moz)\b/i, "DAIRY"],
   [
     /\b(salt|sugar|m\.s\.g|msg|mdh|pcm|coconut powder|custered|custard|vermicelli|maggi|frozen|peas|mushroom|paineappal|pineapple|fruit cocktail|nutela|chocolate|bread crumbs|no 1 orange|no 1 green|bush|golden crown|dabur honey)\b/i,
     "RAW_MATERIALS",
