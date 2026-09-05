@@ -38,15 +38,20 @@ export function checkBill(bill: CheckableBill): string[] {
   // A rupee of slack absorbs per-line rounding on the printed bill.
   const TOLERANCE = 1;
 
+  // Some vendors print tax-inclusive line amounts — items then sum to the
+  // grand total, not the subtotal, and no single row's qty x rate matches its
+  // amount because rate is the pre-tax unit price. That is a different bill
+  // layout, not an error: detect it once and skip the checks that assume
+  // pre-tax line items.
+  let taxInclusiveLayout = false;
+
   if (bill.items.length === 0) {
     warnings.push("No line items were read from this bill.");
   } else {
     const itemsSum = bill.items.reduce((s, i) => s + i.amount, 0);
-    // Some vendors print tax-inclusive line amounts — items then sum to the
-    // grand total, not the subtotal. That is a different bill layout, not an
-    // error, so only flag when items match NEITHER figure.
     const matchesSubtotal = Math.abs(itemsSum - bill.subtotal) <= TOLERANCE;
     const matchesGrandTotal = Math.abs(itemsSum - bill.grandTotal) <= TOLERANCE;
+    taxInclusiveLayout = matchesGrandTotal && !matchesSubtotal;
     if (!matchesSubtotal && !matchesGrandTotal) {
       warnings.push(
         `Line items add up to ${money(itemsSum)} but the subtotal reads ${money(bill.subtotal)} — a difference of ${money(Math.abs(itemsSum - bill.subtotal))}.`,
@@ -61,12 +66,14 @@ export function checkBill(bill: CheckableBill): string[] {
     );
   }
 
-  for (const item of bill.items) {
-    const expected = item.qty * item.rate;
-    if (Math.abs(expected - item.amount) > TOLERANCE) {
-      warnings.push(
-        `"${item.name}": ${item.qty} x ${money(item.rate)} should be ${money(expected)}, but the amount reads ${money(item.amount)}.`,
-      );
+  if (!taxInclusiveLayout) {
+    for (const item of bill.items) {
+      const expected = item.qty * item.rate;
+      if (Math.abs(expected - item.amount) > TOLERANCE) {
+        warnings.push(
+          `"${item.name}": ${item.qty} x ${money(item.rate)} should be ${money(expected)}, but the amount reads ${money(item.amount)}.`,
+        );
+      }
     }
   }
 
