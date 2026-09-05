@@ -19,6 +19,7 @@ import {
 } from "@/lib/data";
 import { addTableSheet, addSummarySheet, newWorkbook, workbookResponse, slugFilename } from "@/lib/excel";
 import { getRestaurantProfile } from "@/lib/settings";
+import { getRevenueTrend, getMenuItemPerformance, getSalesForMonth, getDayOfWeekPattern, projectNextValue } from "@/lib/sales";
 import { formatDate, formatMonth } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import type { ProductCategory } from "@/generated/prisma/enums";
@@ -285,12 +286,16 @@ export async function GET(req: NextRequest) {
   if (kind === "analytics") {
     const month = await resolveMonth(sp.get("month"));
     if (!month) return NextResponse.json({ error: "No data available." }, { status: 404 });
-    const [overview, daily, vendors, products, trend] = await Promise.all([
+    const [overview, daily, vendors, products, trend, revenueTrend, menuPerf, salesMonth, dayPattern] = await Promise.all([
       getOverview(month),
       getDailyTrend(month),
       getVendors(),
       getProducts(),
       getMonthlyTrend(),
+      getRevenueTrend(),
+      getMenuItemPerformance(month),
+      getSalesForMonth(month),
+      getDayOfWeekPattern(),
     ]);
 
     addTableSheet(
@@ -348,6 +353,77 @@ export async function GET(req: NextRequest) {
         .filter((p) => p.status === "LOW_STOCK" || p.status === "OUT_OF_STOCK")
         .map((p) => ({ product: p.name, stock: p.currentStock, reorder: p.reorderLevel }))
     );
+
+    addTableSheet(
+      wb,
+      "Revenue Trend",
+      [
+        { header: "Month", key: "month", width: 14 },
+        { header: "Revenue", key: "amount", width: 16, currency: true },
+      ],
+      revenueTrend.map((t) => ({ month: formatMonth(`${t.month}-01`), amount: t.amount }))
+    );
+
+    addTableSheet(
+      wb,
+      "Revenue by Channel",
+      [
+        { header: "Channel", key: "channel", width: 16 },
+        { header: "Revenue", key: "amount", width: 16, currency: true },
+      ],
+      [
+        { channel: "Dine-in", amount: salesMonth.channelSplit.dineIn },
+        { channel: "Delivery", amount: salesMonth.channelSplit.delivery },
+        { channel: "Takeaway", amount: salesMonth.channelSplit.takeaway },
+        { channel: "Other", amount: salesMonth.channelSplit.other },
+      ]
+    );
+
+    addTableSheet(
+      wb,
+      "Top Sellers",
+      [
+        { header: "Menu Item", key: "name", width: 26 },
+        { header: "Qty Sold", key: "qty", width: 12, number: true },
+        { header: "Revenue", key: "revenue", width: 16, currency: true },
+        { header: "Margin %", key: "marginPct", width: 12 },
+      ],
+      menuPerf.slice(0, 20).map((m) => ({
+        name: m.name,
+        qty: m.qty,
+        revenue: m.revenue,
+        marginPct: m.marginPct !== null ? `${m.marginPct.toFixed(0)}%` : "—",
+      }))
+    );
+
+    addTableSheet(
+      wb,
+      "Revenue by Day of Week",
+      [
+        { header: "Day", key: "label", width: 14 },
+        { header: "Avg Revenue/Day", key: "avgRevenue", width: 18, currency: true },
+        { header: "Days Recorded", key: "days", width: 14, number: true },
+      ],
+      dayPattern.map((d) => ({ label: d.label, avgRevenue: d.avgRevenue, days: d.days }))
+    );
+
+    const revenueProjection = projectNextValue(revenueTrend);
+    const spendProjection = projectNextValue(trend);
+    if (revenueProjection || spendProjection) {
+      addTableSheet(
+        wb,
+        "Next Month Projection",
+        [
+          { header: "Metric", key: "metric", width: 24 },
+          { header: "Month", key: "month", width: 14 },
+          { header: "Projected", key: "amount", width: 16, currency: true },
+        ],
+        [
+          revenueProjection && { metric: "Revenue", month: formatMonth(`${revenueProjection.nextMonth}-01`), amount: revenueProjection.projected },
+          spendProjection && { metric: "Purchase Spend", month: formatMonth(`${spendProjection.nextMonth}-01`), amount: spendProjection.projected },
+        ].filter((r): r is { metric: string; month: string; amount: number } => Boolean(r))
+      );
+    }
 
     return workbookResponse(wb, `${filePrefix}-analytics-${month}.xlsx`);
   }

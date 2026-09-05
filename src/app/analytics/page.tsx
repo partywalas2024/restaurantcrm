@@ -6,7 +6,7 @@ import { TrendLine } from "@/components/charts/TrendLine";
 import { BarList } from "@/components/charts/BarList";
 import { ExportButton } from "@/components/ExportButton";
 import { getAvailableMonths, getOverview, getDailyTrend, getVendors, getProducts, getMonthlyTrend } from "@/lib/data";
-import { getRevenueTrend, getMenuItemPerformance, getSalesForMonth } from "@/lib/sales";
+import { getRevenueTrend, getMenuItemPerformance, getSalesForMonth, getDayOfWeekPattern, projectNextValue } from "@/lib/sales";
 import { formatDate, formatINR, formatMonth } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +83,14 @@ export default async function AnalyticsPage({
     { label: "Takeaway", amount: salesMonth.channelSplit.takeaway },
     { label: "Other", amount: salesMonth.channelSplit.other },
   ].filter((c) => c.amount > 0);
+
+  // ---- Patterns & projection ----
+  const dayPattern = await getDayOfWeekPattern();
+  const dayPatternData = dayPattern.map((d) => ({ label: d.label.slice(0, 3), amount: Math.round(d.avgRevenue) }));
+  const bestDay = [...dayPattern].filter((d) => d.days > 0).sort((a, b) => b.avgRevenue - a.avgRevenue)[0];
+
+  const revenueProjection = projectNextValue(revenueTrendAll);
+  const spendProjection = projectNextValue(trendMonths);
 
   return (
     <div>
@@ -174,6 +182,46 @@ export default async function AnalyticsPage({
                   </Badge>
                 </div>
               ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="Revenue by Day of Week (all-time average)">
+          {dayPatternData.every((d) => d.amount === 0) ? (
+            <EmptyState title="Not enough sales history yet" />
+          ) : (
+            <>
+              <BarList data={dayPatternData} color="var(--brand)" />
+              {bestDay && bestDay.avgRevenue > 0 && (
+                <p className="mt-3 text-xs text-muted">
+                  <span className="font-medium text-foreground">{bestDay.label}</span> does best on average — {formatINR(bestDay.avgRevenue, { decimals: true })}/day across {bestDay.days} recorded day(s).
+                </p>
+              )}
+            </>
+          )}
+        </Card>
+        <Card title="Next Month — Trend Projection">
+          {!revenueProjection && !spendProjection ? (
+            <EmptyState title="Not enough months of history" description="Needs at least 2 months of sales or purchase data to project a trend." />
+          ) : (
+            <div className="space-y-4">
+              {revenueProjection && (
+                <div>
+                  <p className="text-xs text-muted">Projected revenue — {formatMonth(`${revenueProjection.nextMonth}-01`)}</p>
+                  <p className="text-lg font-semibold">{formatINR(revenueProjection.projected)}</p>
+                </div>
+              )}
+              {spendProjection && (
+                <div>
+                  <p className="text-xs text-muted">Projected purchase spend — {formatMonth(`${spendProjection.nextMonth}-01`)}</p>
+                  <p className="text-lg font-semibold">{formatINR(spendProjection.projected)}</p>
+                </div>
+              )}
+              <p className="text-xs text-muted">
+                Straight-line trend from the last {Math.max(revenueProjection?.basedOnMonths ?? 0, spendProjection?.basedOnMonths ?? 0)} month(s) — a rough indicator, not a forecasting model. Treat as directional only.
+              </p>
             </div>
           )}
         </Card>

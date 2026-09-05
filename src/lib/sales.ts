@@ -200,6 +200,56 @@ export async function getWasteForMonth(month: string) {
   return { total, rows };
 }
 
+/** Revenue by day-of-week across every recorded day — answers "which day does best". */
+export async function getDayOfWeekPattern() {
+  const rows = await prisma.dailySales.findMany({
+    select: { date: true, dineInRevenue: true, deliveryRevenue: true, takeawayRevenue: true, otherRevenue: true, covers: true },
+  });
+  const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const byDay = DAYS.map((label) => ({ label, revenue: 0, covers: 0, days: 0 }));
+  for (const r of rows) {
+    const d = byDay[r.date.getDay()];
+    d.revenue += r.dineInRevenue + r.deliveryRevenue + r.takeawayRevenue + r.otherRevenue;
+    d.covers += r.covers;
+    d.days += 1;
+  }
+  return byDay.map((d) => ({ ...d, avgRevenue: d.days > 0 ? d.revenue / d.days : 0 }));
+}
+
+/**
+ * Naive linear projection over the trailing months of a {month, amount} series.
+ * Least-squares fit on whatever history exists (2-12 points) — indicative only,
+ * not a real forecasting model. Returns null when there isn't enough history
+ * to fit a line (fewer than 2 months).
+ */
+export function projectNextValue(
+  series: { month: string; amount: number }[],
+): { nextMonth: string; projected: number; basedOnMonths: number } | null {
+  const trailing = series.slice(-12);
+  if (trailing.length < 2) return null;
+
+  const n = trailing.length;
+  const xs = trailing.map((_, i) => i);
+  const ys = trailing.map((t) => t.amount);
+  const xMean = xs.reduce((a, b) => a + b, 0) / n;
+  const yMean = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - xMean) * (ys[i] - yMean);
+    den += (xs[i] - xMean) ** 2;
+  }
+  const slope = den === 0 ? 0 : num / den;
+  const intercept = yMean - slope * xMean;
+  const projected = Math.max(0, intercept + slope * n);
+
+  const [y, m] = trailing[trailing.length - 1].month.split("-").map(Number);
+  const next = new Date(y, m, 1); // m is 1-based already, so this lands on next month
+  const nextMonth = monthKey(next);
+
+  return { nextMonth, projected, basedOnMonths: n };
+}
+
 export async function getProfitAndLoss(month: string) {
   const { start, end } = monthRange(month);
   const [sales, menuPerf, labor, otherOpexLines, waste] = await Promise.all([
