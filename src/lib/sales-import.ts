@@ -71,7 +71,9 @@ export function classifyPayment(value: string | undefined): "cash" | "upi" | "ca
   if (!value) return "other";
   const v = value.toLowerCase();
   if (v.includes("cash")) return "cash";
-  if (v.includes("upi") || v.includes("gpay") || v.includes("phonepe") || v.includes("paytm")) return "upi";
+  // "phonpe" (missing the middle "e") is how PetPooja's own export actually
+  // spells it in real data — not a typo to fix upstream, just match both.
+  if (v.includes("upi") || v.includes("gpay") || v.includes("phonepe") || v.includes("phonpe") || v.includes("paytm")) return "upi";
   if (v.includes("card") || v.includes("credit") || v.includes("debit")) return "card";
   return "other";
 }

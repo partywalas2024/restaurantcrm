@@ -21,8 +21,11 @@ export default async function SalesPage({
 
   const actions = (
     <>
+      <Link href="/sales/import-reports" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
+        <UploadCloud size={14} /> Sync PetPooja Reports
+      </Link>
       <Link href="/sales/import" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
-        <UploadCloud size={14} /> Import from POS
+        <UploadCloud size={14} /> Import Item-wise CSV
       </Link>
       <Link href="/sales/entry" className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark">
         <Plus size={14} /> Add Entry
