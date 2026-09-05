@@ -120,6 +120,22 @@ export async function getSalesForMonth(month: string) {
   };
 }
 
+/** Monthly revenue across all recorded sales — the revenue-side counterpart to getMonthlyTrend(). */
+export async function getRevenueTrend() {
+  const rows = await prisma.dailySales.findMany({
+    select: { date: true, dineInRevenue: true, deliveryRevenue: true, takeawayRevenue: true, otherRevenue: true },
+  });
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    const key = monthKey(r.date);
+    const total = r.dineInRevenue + r.deliveryRevenue + r.takeawayRevenue + r.otherRevenue;
+    map.set(key, (map.get(key) ?? 0) + total);
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => (a[0] > b[0] ? 1 : -1))
+    .map(([month, amount]) => ({ month, amount }));
+}
+
 export async function getMenuItemPerformance(month?: string) {
   const where = month
     ? { dailySales: { date: { gte: monthRange(month).start, lt: monthRange(month).end } } }

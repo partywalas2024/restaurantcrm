@@ -6,6 +6,7 @@ import { TrendLine } from "@/components/charts/TrendLine";
 import { BarList } from "@/components/charts/BarList";
 import { ExportButton } from "@/components/ExportButton";
 import { getAvailableMonths, getOverview, getDailyTrend, getVendors, getProducts, getMonthlyTrend } from "@/lib/data";
+import { getRevenueTrend, getMenuItemPerformance, getSalesForMonth } from "@/lib/sales";
 import { formatDate, formatINR, formatMonth } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,26 @@ export default async function AnalyticsPage({
   const monthComparison = idx >= 0 ? trendMonths.slice(Math.max(0, idx - 5), idx + 1) : trendMonths.slice(-6);
   const monthComparisonData = monthComparison.map((t) => ({ label: formatMonth(`${t.month}-01`), amount: t.amount }));
 
+  // ---- Sales & menu side, so this page is a whole-business analysis view rather than purchases only ----
+  const [revenueTrendAll, menuPerf, salesMonth] = await Promise.all([
+    getRevenueTrend(),
+    getMenuItemPerformance(month),
+    getSalesForMonth(month),
+  ]);
+  const revIdx = revenueTrendAll.findIndex((t) => t.month === month);
+  const revenueComparison = revIdx >= 0 ? revenueTrendAll.slice(Math.max(0, revIdx - 5), revIdx + 1) : revenueTrendAll.slice(-6);
+  const revenueComparisonData = revenueComparison.map((t) => ({ label: formatMonth(`${t.month}-01`), amount: t.amount }));
+
+  const topSellers = menuPerf.slice(0, 10).map((m) => ({ label: m.name, amount: m.revenue }));
+  const lowestMarginItems = [...menuPerf].filter((m) => m.hasRecipe).sort((a, b) => (a.marginPct ?? 0) - (b.marginPct ?? 0)).slice(0, 8);
+
+  const channelData = [
+    { label: "Dine-in", amount: salesMonth.channelSplit.dineIn },
+    { label: "Delivery", amount: salesMonth.channelSplit.delivery },
+    { label: "Takeaway", amount: salesMonth.channelSplit.takeaway },
+    { label: "Other", amount: salesMonth.channelSplit.other },
+  ].filter((c) => c.amount > 0);
+
   return (
     <div>
       <PageHeader
@@ -114,7 +135,52 @@ export default async function AnalyticsPage({
         </Card>
       </div>
 
-      <Card title="Top 10 Most Expensive Purchases" className="mt-6">
+      <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">Sales &amp; Menu</h2>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="Revenue Trend (last 6 months)">
+          {revenueComparisonData.length === 0 ? (
+            <EmptyState title="No sales recorded yet" description="Import a POS export or add daily sales entries." />
+          ) : (
+            <BarList data={revenueComparisonData} color="var(--ok)" />
+          )}
+        </Card>
+        <Card title={`Revenue by Channel — ${formatMonth(`${month}-01`)}`}>
+          {channelData.length === 0 ? (
+            <EmptyState title="No sales this month" />
+          ) : (
+            <BarList data={channelData} color="var(--info)" />
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title={`Top Sellers by Revenue — ${formatMonth(`${month}-01`)}`}>
+          {topSellers.length === 0 ? (
+            <EmptyState title="No item-wise sales this month" />
+          ) : (
+            <BarList data={topSellers} color="var(--brand)" />
+          )}
+        </Card>
+        <Card title="Lowest Margin Items (with a recipe)">
+          {lowestMarginItems.length === 0 ? (
+            <EmptyState title="No recipe-costed items sold this month" description="Add recipes on the Menu & Recipes page to see margin here." />
+          ) : (
+            <div className="divide-y divide-border">
+              {lowestMarginItems.map((m) => (
+                <div key={m.id} className="flex items-center justify-between py-2 text-sm">
+                  <span className="truncate">{m.name}</span>
+                  <Badge tone={(m.marginPct ?? 0) < 0 ? "crit" : (m.marginPct ?? 0) < 20 ? "warn" : "ok"}>
+                    {m.marginPct !== null ? `${m.marginPct.toFixed(0)}%` : "—"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <h2 className="mt-8 mb-3 text-sm font-semibold text-muted">Purchases &amp; Supply</h2>
+      <Card title="Top 10 Most Expensive Purchases">
         {topBills.length === 0 ? (
           <EmptyState title="No purchases this month" />
         ) : (

@@ -42,7 +42,12 @@ export function checkBill(bill: CheckableBill): string[] {
     warnings.push("No line items were read from this bill.");
   } else {
     const itemsSum = bill.items.reduce((s, i) => s + i.amount, 0);
-    if (Math.abs(itemsSum - bill.subtotal) > TOLERANCE) {
+    // Some vendors print tax-inclusive line amounts — items then sum to the
+    // grand total, not the subtotal. That is a different bill layout, not an
+    // error, so only flag when items match NEITHER figure.
+    const matchesSubtotal = Math.abs(itemsSum - bill.subtotal) <= TOLERANCE;
+    const matchesGrandTotal = Math.abs(itemsSum - bill.grandTotal) <= TOLERANCE;
+    if (!matchesSubtotal && !matchesGrandTotal) {
       warnings.push(
         `Line items add up to ${money(itemsSum)} but the subtotal reads ${money(bill.subtotal)} — a difference of ${money(Math.abs(itemsSum - bill.subtotal))}.`,
       );
