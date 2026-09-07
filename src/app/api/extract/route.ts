@@ -6,7 +6,8 @@
 // is always confirmed by a human first.
 
 import { NextRequest, NextResponse } from "next/server";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiAuthGuard, getCurrentUser } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import {
   MAX_FILE_BYTES,
   SUPPORTED_TYPES,
@@ -15,9 +16,25 @@ import {
 
 export const maxDuration = 300;
 
+// Generous enough for a real session of uploading a month of bills, low
+// enough that a runaway loop can't quietly spend a fortune at OpenAI.
+const EXTRACT_LIMIT = 30;
+const EXTRACT_WINDOW_MS = 60 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
   const denied = await apiAuthGuard();
   if (denied) return denied;
+
+  // Every call here costs money, so it is metered per user.
+  const user = await getCurrentUser();
+  const limit = rateLimit("extract", user?.id ?? "anonymous", EXTRACT_LIMIT, EXTRACT_WINDOW_MS);
+  if (!limit.allowed) {
+    const minutes = Math.ceil(limit.retryAfterSeconds / 60);
+    return NextResponse.json(
+      { error: `You've read ${EXTRACT_LIMIT} files in the last hour — the limit that protects against runaway API cost. Try again in ${minutes} minute(s).` },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
 
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(

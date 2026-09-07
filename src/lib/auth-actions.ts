@@ -20,6 +20,7 @@ import {
   validatePassword,
   verifyPassword,
 } from "./auth";
+import { logActivity } from "./activity-log";
 
 export type FormState = { error?: string; success?: string };
 
@@ -120,7 +121,7 @@ export async function createUserAction(
   _prevState: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   const username = normalizeUsername(formData.get("username"));
   const name = String(formData.get("name") ?? "").trim();
@@ -142,7 +143,7 @@ export async function createUserAction(
   const existing = await prisma.user.findUnique({ where: { username } });
   if (existing) return { error: `Username "${username}" is already taken.` };
 
-  await prisma.user.create({
+  const created = await prisma.user.create({
     data: {
       username,
       name,
@@ -151,6 +152,7 @@ export async function createUserAction(
       passwordHash: await hashPassword(password),
     },
   });
+  await logActivity(admin, "CREATE", "User", created.id, `Created user @${username} (${name}, ${role})`);
 
   revalidatePath("/users");
   redirect("/users?created=" + encodeURIComponent(username));
@@ -190,6 +192,13 @@ export async function updateUserAction(
     where: { id },
     data: { name, email: email || null, role, isActive },
   });
+  await logActivity(
+    admin,
+    "UPDATE",
+    "User",
+    id,
+    `Updated user @${target.username} (name: ${target.name} -> ${name}, role: ${target.role} -> ${role}, active: ${target.isActive} -> ${isActive})`,
+  );
 
   revalidatePath("/users");
   return { success: "User updated." };
@@ -199,7 +208,7 @@ export async function resetPasswordAction(
   _prevState: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   const id = String(formData.get("id") ?? "");
   const password = String(formData.get("password") ?? "");
@@ -214,6 +223,7 @@ export async function resetPasswordAction(
     where: { id },
     data: { passwordHash: await hashPassword(password) },
   });
+  await logActivity(admin, "UPDATE", "User", id, `Reset password for @${target.username}`);
 
   revalidatePath("/users");
   return { success: `Password reset for ${target.username}.` };
@@ -243,6 +253,7 @@ export async function deleteUserAction(formData: FormData) {
   }
 
   await prisma.user.delete({ where: { id } });
+  await logActivity(admin, "DELETE", "User", id, `Deleted user @${target.username} (${target.name})`);
   revalidatePath("/users");
   redirect("/users?deleted=" + encodeURIComponent(target.username));
 }

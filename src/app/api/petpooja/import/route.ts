@@ -6,7 +6,8 @@
 // freshly-exported report is the more authoritative figure for that day.
 
 import { NextRequest, NextResponse } from "next/server";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiAuthGuard, getCurrentUser } from "@/lib/auth";
+import { logActivity } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 
 type ImportDay = {
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const user = await getCurrentUser();
   let daysImported = 0;
   for (const d of body.days) {
     const date = new Date(d.date);
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
     });
     daysImported++;
   }
+  await logActivity(user, "IMPORT", "DailySales", null, `Synced ${daysImported} day(s) of sales from PetPooja reports`);
 
   return NextResponse.json({ daysImported });
 }

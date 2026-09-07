@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up the Restaurant CRM SQLite database (online backup + rotation)
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/var/www/restaurantcrm
+ExecStart=/usr/bin/node /var/www/restaurantcrm/scripts/backup-db.mjs --db /var/www/restaurantcrm/dev.db --out /var/backups/restaurantcrm --keep 14

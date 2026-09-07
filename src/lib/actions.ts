@@ -11,18 +11,19 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { logActivity } from "@/lib/activity-log";
 import { importBills, type ExtractedBill, type ExtractedItem } from "@/lib/import";
 import type { PaymentMethod, PaymentStatus, ProductCategory } from "@/generated/prisma/enums";
 
 export async function updateBill(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const id = String(formData.get("id"));
   const paymentStatus = formData.get("paymentStatus") as PaymentStatus | null;
   const category = formData.get("category") as ProductCategory | null;
   const notes = formData.get("notes") as string | null;
   const billNumber = formData.get("billNumber") as string | null;
 
-  await prisma.bill.update({
+  const updated = await prisma.bill.update({
     where: { id },
     data: {
       ...(paymentStatus ? { paymentStatus } : {}),
@@ -31,6 +32,7 @@ export async function updateBill(formData: FormData) {
       ...(billNumber ? { billNumber, isUncertain: false } : {}),
     },
   });
+  await logActivity(user, "UPDATE", "Bill", id, `Updated bill ${updated.billNumber}`);
 
   revalidatePath("/bills");
   revalidatePath(`/bills/${id}`);
@@ -40,7 +42,7 @@ export async function updateBill(formData: FormData) {
 }
 
 export async function updateProduct(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const id = String(formData.get("id"));
   const category = formData.get("category") as ProductCategory | null;
   const reorderLevel = formData.get("reorderLevel");
@@ -48,7 +50,7 @@ export async function updateProduct(formData: FormData) {
   const unit = formData.get("unit") as string | null;
   const name = formData.get("name") as string | null;
 
-  await prisma.product.update({
+  const updated = await prisma.product.update({
     where: { id },
     data: {
       ...(category ? { category } : {}),
@@ -58,6 +60,7 @@ export async function updateProduct(formData: FormData) {
       ...(name ? { name, isUncertain: false } : {}),
     },
   });
+  await logActivity(user, "UPDATE", "Product", id, `Updated product ${updated.name}`);
 
   revalidatePath("/products");
   revalidatePath("/inventory");
@@ -66,7 +69,7 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function updateVendor(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const id = String(formData.get("id"));
   const name = (formData.get("name") as string | null)?.trim();
   const phone = formData.get("phone") as string | null;
@@ -78,7 +81,7 @@ export async function updateVendor(formData: FormData) {
     throw new Error("Vendor name cannot be empty.");
   }
 
-  await prisma.vendor.update({
+  const updated = await prisma.vendor.update({
     where: { id },
     data: {
       ...(name ? { name } : {}),
@@ -88,6 +91,7 @@ export async function updateVendor(formData: FormData) {
       ...(notes !== null ? { notes } : {}),
     },
   });
+  await logActivity(user, "UPDATE", "Vendor", id, `Updated vendor ${updated.name}`);
 
   revalidatePath("/vendors");
   revalidatePath(`/vendors/${id}`);
@@ -98,7 +102,7 @@ export async function updateVendor(formData: FormData) {
 }
 
 export async function createVendor(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Vendor name is required.");
   const phone = (formData.get("phone") as string | null) || null;
@@ -119,6 +123,7 @@ export async function createVendor(formData: FormData) {
   const vendor = await prisma.vendor.create({
     data: { name, phone, address, gstin, notes },
   });
+  await logActivity(user, "CREATE", "Vendor", vendor.id, `Created vendor ${vendor.name}`);
 
   revalidatePath("/vendors");
   revalidatePath("/");
@@ -126,7 +131,7 @@ export async function createVendor(formData: FormData) {
 }
 
 export async function recordPayment(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const vendorId = String(formData.get("vendorId"));
   const date = new Date(String(formData.get("date")));
   const amount = Number(formData.get("amount"));
@@ -138,9 +143,11 @@ export async function recordPayment(formData: FormData) {
     throw new Error("Payment amount must be a positive number.");
   }
 
-  await prisma.payment.create({
-    data: { vendorId, date, amount, method, reference, notes },
-  });
+  const [payment, payVendor] = await Promise.all([
+    prisma.payment.create({ data: { vendorId, date, amount, method, reference, notes } }),
+    prisma.vendor.findUnique({ where: { id: vendorId }, select: { name: true } }),
+  ]);
+  await logActivity(user, "CREATE", "Payment", payment.id, `Recorded payment of Rs. ${amount.toFixed(2)} (${method}) to ${payVendor?.name ?? vendorId}`);
 
   revalidatePath(`/vendors/${vendorId}`);
   revalidatePath("/vendors");
@@ -149,11 +156,16 @@ export async function recordPayment(formData: FormData) {
 }
 
 export async function deletePayment(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const id = String(formData.get("id"));
   const vendorId = String(formData.get("vendorId"));
 
+  const [existing, delVendor] = await Promise.all([
+    prisma.payment.findUnique({ where: { id } }),
+    prisma.vendor.findUnique({ where: { id: vendorId }, select: { name: true } }),
+  ]);
   await prisma.payment.delete({ where: { id } });
+  await logActivity(user, "DELETE", "Payment", id, `Deleted payment of Rs. ${(existing?.amount ?? 0).toFixed(2)} to ${delVendor?.name ?? vendorId}`);
 
   revalidatePath(`/vendors/${vendorId}`);
   revalidatePath("/vendors");
@@ -162,7 +174,7 @@ export async function deletePayment(formData: FormData) {
 }
 
 export async function adjustStock(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const productId = String(formData.get("productId"));
   const delta = Number(formData.get("delta"));
   const notes = (formData.get("notes") as string | null) ?? "";
@@ -184,6 +196,7 @@ export async function adjustStock(formData: FormData) {
       },
     }),
   ]);
+  await logActivity(user, "UPDATE", "Product", productId, `Adjusted stock for ${product.name}: ${delta >= 0 ? "+" : ""}${delta} ${product.unit}${notes ? ` — ${notes}` : ""}`);
 
   revalidatePath("/inventory");
   revalidatePath("/products");
@@ -191,7 +204,7 @@ export async function adjustStock(formData: FormData) {
 }
 
 export async function updateRestaurantProfile(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Restaurant name is required.");
   const address = (formData.get("address") as string | null) || null;
@@ -203,6 +216,7 @@ export async function updateRestaurantProfile(formData: FormData) {
     update: { name, address, phone, gstin },
     create: { id: "default", name, address, phone, gstin },
   });
+  await logActivity(user, "UPDATE", "RestaurantProfile", "default", `Updated restaurant profile (${name})`);
 
   revalidatePath("/", "layout");
 }
@@ -217,7 +231,7 @@ export async function updateRestaurantProfile(formData: FormData) {
  * afterwards.
  */
 export async function createManualBill(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
 
   const vendorName = String(formData.get("vendorName") ?? "").trim();
   const billNumber = String(formData.get("billNumber") ?? "").trim();
@@ -274,7 +288,7 @@ export async function createManualBill(formData: FormData) {
     items,
   };
 
-  await importBills(
+  const result = await importBills(
     {
       name: vendorName,
       phone: String(formData.get("vendorPhone") ?? "").trim() || undefined,
@@ -283,6 +297,7 @@ export async function createManualBill(formData: FormData) {
     [bill],
     "manual entry",
   );
+  await logActivity(user, "CREATE", "Bill", null, `Entered bill ${billNumber} manually for ${result.vendor.name} (Rs. ${grandTotal.toFixed(2)})`);
 
   revalidatePath("/bills");
   revalidatePath("/");

@@ -27,7 +27,8 @@ Snapshot of every feature that exists, its actual state (not aspirational), and 
 | Feature | State | Notes |
 |---|---|---|
 | Daily sales entry (manual) | ✅ Working | |
-| PetPooja import | ⚠️ Built, lightly tested | Column-mapping logic validated against a hand-authored synthetic CSV only — never run against a real PetPooja export |
+| PetPooja report sync (Orders Master / Executive Summary / Day End) | ✅ Working | Verified against 3 real exports; found and fixed 2 real bugs in the process (a PhonePe spelling variant, a tax-basis mismatch) |
+| PetPooja item-wise CSV import | ⚠️ Built, lightly tested | Column-mapping logic validated against a hand-authored synthetic CSV only — never run against a real export |
 | Menu & recipe costing | ✅ Working | Verified: manual math cross-checks matched exactly |
 | Top sellers / lowest margin | ✅ Working | |
 | Revenue trend, channel split | ✅ Working | |
@@ -73,15 +74,15 @@ Snapshot of every feature that exists, its actual state (not aspirational), and 
 1. **Multi-restaurant / tenant isolation.** Every user currently sees every bit of data — there is no concept of "this data belongs to restaurant X." If this tool is ever shared beyond Junction 14, this is a hard requirement, not a nice-to-have, and it's a schema-level change (tenant ID on every table + query scoping), not a toggle.
 2. **Correct the 2 flagged bills.** Financial records currently contain known-wrong figures. Low effort, needs the paper originals and 10 minutes in the Bills UI.
 3. **Networked database.** SQLite on one machine is fine today. It is the reason this can't run more than one app instance, and it's a single point of failure with no built-in replication. Worth planning before this becomes business-critical infrastructure the owner can't afford downtime on.
-4. **Automated backups.** Current backup discipline is manual `cp dev.db dev.db.bak-*` before each deploy. There is no scheduled, automatic, off-server backup. One bad `rm` or disk failure loses everything.
+4. ~~**Automated backups.**~~ **Done.** `scripts/backup-db.mjs` + a systemd timer (`deploy/restaurantcrm-backup.timer`) take a verified online SQLite backup daily to `/var/backups/restaurantcrm` (outside the app directory, with 14-day rotation), installed and running on production. Restore path tested (a real backup was loaded and its data read back). Remaining gap: same-instance only — true off-site backup needs an S3 bucket or a scheduled pull to another machine, neither provisioned (see note below).
 
 ### 🟡 Medium priority — real gaps, no urgent trigger yet
 
-5. **PetPooja import, tested against a real export.** The column-mapping logic has only been validated against synthetic data. First real import should be watched closely, not trusted blind.
-6. **Audit trail / activity log.** No record of who changed what, when. With 2+ users and an admin able to edit anyone's entries, there's currently no way to answer "who changed this bill's category last Tuesday."
-7. **Rate limiting on the extraction endpoint.** `/api/extract` calls a paid, metered external API. Nothing currently stops a compromised session (or a bug in a future feature) from hammering it and running up cost.
+5. ~~**PetPooja import, tested against a real export.**~~ **Done** — see the report-sync feature (Orders Master / Executive Summary / Day End), verified against three real exports and now live.
+6. ~~**Audit trail / activity log.**~~ **Done.** `ActivityLog` model + `/activity` (admin-only) covers bills, products, vendors, payments, stock adjustments, restaurant profile, manual bill entry, user management, and every import path (bill scans, PetPooja reports, item-wise CSV). Verified live: create/delete a payment, confirmed both log entries with correct attribution.
+7. ~~**Rate limiting on the extraction endpoint.**~~ **Done.** 30 calls/hour per user on `/api/extract`, in-memory (same trade-off as the sign-in throttle — fine for one PM2 process). Unit-verified: allows exactly the limit, blocks the next call, resets after the window, doesn't cross-contaminate between users.
 8. **Session throttling that survives a restart.** Currently in-memory; a PM2 restart clears failed-login counters. Low risk at 2 users, real gap at scale.
-9. **Recipe coverage completeness.** Food-cost % is only meaningful once most menu items have recipes attached. Worth a dashboard nudge ("12 of 20 menu items have no recipe — food cost is understated") rather than a silent caveat buried in the P&L.
+9. ~~**Recipe coverage completeness.**~~ **Done.** Menu page now shows "N of M active menu items have no recipe" up front, rather than only surfacing after landing on a specific month's P&L.
 
 ### 🟢 Lower priority — genuinely deferred, correctly so
 

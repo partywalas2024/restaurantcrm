@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Restaurant CRM database backup
+
+[Timer]
+# 20:30 UTC = 02:00 IST — after the restaurant closes, before anyone starts.
+OnCalendar=*-*-* 20:30:00
+# If the box was off at the scheduled time, run as soon as it is back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

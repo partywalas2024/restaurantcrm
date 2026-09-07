@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { classifyChannel, classifyPayment, type SalesField } from "@/lib/sales-import";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiAuthGuard, getCurrentUser } from "@/lib/auth";
+import { logActivity } from "@/lib/activity-log";
 
 function parseDate(value: string): Date | null {
   const trimmed = value.trim();
@@ -167,6 +168,15 @@ export async function POST(req: NextRequest) {
       itemSalesImported += itemRows.length;
     }
   }
+
+  const user = await getCurrentUser();
+  await logActivity(
+    user,
+    "IMPORT",
+    "DailySales",
+    null,
+    `Imported item-wise sales CSV: ${daysImported} day(s), ${itemSalesImported} item-sale row(s), ${skipped} row(s) skipped`,
+  );
 
   return NextResponse.json({ daysImported, itemSalesImported, rowsSkipped: skipped, totalRowsProcessed: parsed.length });
 }

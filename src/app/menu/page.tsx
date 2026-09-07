@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 
 export default async function MenuPage() {
   const items = await getMenuItems();
+  const activeItems = items.filter((i) => i.active);
+  const missingRecipeCount = activeItems.filter((i) => !i.hasRecipe).length;
 
   return (
     <div>
@@ -22,6 +24,17 @@ export default async function MenuPage() {
           </Link>
         }
       />
+
+      {missingRecipeCount > 0 && (
+        <p className="mb-4 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn-bg px-3 py-2 text-xs text-warn">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span>
+            <strong>{missingRecipeCount} of {activeItems.length} active menu item(s) have no recipe.</strong> Food cost
+            and margin for those dishes read as &ldquo;—&rdquo; below, and the P&amp;L&apos;s food-cost % understates
+            reality by however much of your sales volume they account for. Add a recipe to each to close the gap.
+          </span>
+        </p>
+      )}
 
       <Card>
         {items.length === 0 ? (

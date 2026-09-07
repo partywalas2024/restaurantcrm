@@ -23,6 +23,7 @@ import {
   Users,
   Trash2,
   ShieldCheck,
+  History,
   LogOut,
 } from "lucide-react";
 import { signOutAction } from "@/lib/auth-actions";
@@ -67,7 +68,10 @@ function isActive(pathname: string, href: string) {
 function NavLinks({ isAdmin, onNavigate }: { isAdmin: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
   const sections = isAdmin
-    ? [...SECTIONS, { label: "Administration", items: [{ href: "/users", label: "Users & Access", icon: ShieldCheck }] }]
+    ? [...SECTIONS, { label: "Administration", items: [
+        { href: "/users", label: "Users & Access", icon: ShieldCheck },
+        { href: "/activity", label: "Activity Log", icon: History },
+      ] }]
     : SECTIONS;
   return (
     <nav className="flex flex-1 flex-col gap-4 px-3">

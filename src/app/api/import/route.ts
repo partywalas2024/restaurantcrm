@@ -2,7 +2,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { importBills, type ExtractedBill, type ExtractedVendor } from "@/lib/import";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiAuthGuard, getCurrentUser } from "@/lib/auth";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(req: NextRequest) {
   const denied = await apiAuthGuard();
@@ -20,6 +21,14 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await importBills(body.vendor, body.bills, body.fileName);
+    const user = await getCurrentUser();
+    await logActivity(
+      user,
+      "IMPORT",
+      "Bill",
+      null,
+      `Imported ${result.billsCreated} bill(s), ${result.lineItemsCreated} line item(s) for ${result.vendor.name}${body.fileName ? ` from ${body.fileName}` : ""}`,
+    );
     return NextResponse.json({
       vendorName: result.vendor.name,
       billsCreated: result.billsCreated,

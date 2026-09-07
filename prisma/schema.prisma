@@ -330,3 +330,26 @@ model User {
 
   @@index([username])
 }
+
+// ---- Audit trail ----
+// Who changed what, when. Two people share this system and an admin can edit
+// anyone's records, so "when did this bill's total change, and who did it"
+// needs an answer that doesn't depend on memory.
+//
+// userName is denormalized on purpose: the log has to stay readable after an
+// account is deleted, and a foreign key would either block that deletion or
+// cascade the history away with it.
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String
+  action    String // CREATE | UPDATE | DELETE | IMPORT
+  entity    String // Bill | Payment | Vendor | Product | DailySales | User | ...
+  entityId  String?
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
