@@ -1,6 +1,10 @@
-# Feature Audit — Junction 14 Restaurant CRM
+# Feature Audit — Partywalas Restaurant CRM
 
 Snapshot of every feature that exists, its actual state (not aspirational), and what's missing — ranked by how much it matters. Based on direct inspection of the codebase and production database, not the README's framing of itself.
+
+Covers the platform as it stands after the Partywalas multi-tenant rebuild:
+Junction 14 is now one restaurant (tenant) among potentially many, managed
+by a Partywalas `SUPER_ADMIN` from `/platform`.
 
 ---
 
@@ -42,8 +46,10 @@ Snapshot of every feature that exists, its actual state (not aspirational), and 
 
 | Feature | State | Notes |
 |---|---|---|
-| Sign-in gate (all routes) | ✅ Working | Two-layer: `proxy.ts` (optimistic) + `requireUser()`/`requireAdmin()`/`apiAuthGuard()` (authoritative) |
-| Admin user management | ✅ Working | Guards against removing the last admin |
+| Sign-in gate (all routes) | ✅ Working | Two-layer: `proxy.ts` (optimistic) + `requireUser()`/`requireRestaurantUser()`/`requireRestaurantAdmin()`/`requireSuperAdmin()`/`apiAuthGuard()`/`apiRestaurantGuard()` (authoritative) |
+| Multi-tenant data isolation | ✅ Working | Every business table scoped by `restaurantId`; `requireRestaurantUser()`'s return type makes `restaurantId` non-nullable, so a `SUPER_ADMIN` (always `restaurantId: null`) cannot type-check into a restaurant-scoped call. Every update/delete re-verifies `findFirst({ id, restaurantId })` before mutating. Verified live: a second restaurant's admin sees zero rows of another restaurant's data, and cross-restaurant users are invisible on `/users` |
+| Restaurant admin user management | ✅ Working | Guards against removing the last admin, scoped per restaurant |
+| Platform admin (SUPER_ADMIN) restaurant management | ✅ Working | Create restaurant + first admin together, activate/deactivate; verified to expose no business data |
 | Password hashing (scrypt) | ✅ Working | |
 | Session cookies (signed JWT, 12h) | ✅ Working | |
 | Sign-in throttling | ⚠️ Working, fragile | In-memory — resets on process restart; fine for one PM2 instance, not for scale |
@@ -71,7 +77,7 @@ Snapshot of every feature that exists, its actual state (not aspirational), and 
 
 ### 🔴 High priority — real business risk if ignored
 
-1. **Multi-restaurant / tenant isolation.** Every user currently sees every bit of data — there is no concept of "this data belongs to restaurant X." If this tool is ever shared beyond Junction 14, this is a hard requirement, not a nice-to-have, and it's a schema-level change (tenant ID on every table + query scoping), not a toggle.
+1. ~~**Multi-restaurant / tenant isolation.**~~ **Done.** Partywalas platform + per-restaurant tenancy shipped: `Restaurant` model, `restaurantId` on every business table, `SUPER_ADMIN`/`RESTAURANT_ADMIN`/`USER` roles, `/platform` for restaurant management. Verified live with a second test restaurant — zero cross-tenant data leakage in either direction, platform admin sees no business data. Not yet applied to the production database (local-only as of this writing — see PRD).
 2. **Correct the 2 flagged bills.** Financial records currently contain known-wrong figures. Low effort, needs the paper originals and 10 minutes in the Bills UI.
 3. **Networked database.** SQLite on one machine is fine today. It is the reason this can't run more than one app instance, and it's a single point of failure with no built-in replication. Worth planning before this becomes business-critical infrastructure the owner can't afford downtime on.
 4. ~~**Automated backups.**~~ **Done.** `scripts/backup-db.mjs` + a systemd timer (`deploy/restaurantcrm-backup.timer`) take a verified online SQLite backup daily to `/var/backups/restaurantcrm` (outside the app directory, with 14-day rotation), installed and running on production. Restore path tested (a real backup was loaded and its data read back). Remaining gap: same-instance only — true off-site backup needs an S3 bucket or a scheduled pull to another machine, neither provisioned (see note below).

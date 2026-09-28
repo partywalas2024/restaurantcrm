@@ -1,12 +1,17 @@
-# Junction 14 — Restaurant CRM
+# Partywalas — Multi-Tenant Restaurant CRM
 
-A back-office system for a single restaurant. It tracks what the kitchen **buys**
-(vendor bills, inventory, accounts payable), what the restaurant **sells** (daily
+A back-office system for restaurants. It tracks what a kitchen **buys**
+(vendor bills, inventory, accounts payable), what it **sells** (daily
 sales, menu performance), and what that leaves behind (**profit and loss**).
 
-Live at [restaurant.partywalas.com](https://restaurant.partywalas.com). The
-restaurant's name, address and GSTIN live in **Settings**, not in code, so the
-same build can be re-branded for another restaurant without edits.
+Partywalas is the platform; each restaurant that gets CRM access — starting
+with Junction 14 — is a **tenant** with its own team and its own isolated data.
+A Partywalas platform admin (`SUPER_ADMIN`) creates restaurant accounts from
+**Platform → Restaurants** but never sees a restaurant's business data; each
+restaurant's own `RESTAURANT_ADMIN` manages its team and profile (name,
+address, GSTIN) from **Settings**.
+
+Live at [restaurant.partywalas.com](https://restaurant.partywalas.com).
 
 ---
 
@@ -54,7 +59,8 @@ Sales ──► MenuItemSale ──► MenuItem ──► RecipeIngredient ─�
 | **Balance Sheet** | Stock value against outstanding payables |
 | **Upload Bills** | Reads a PDF or photo of bills via OpenAI, re-checks the arithmetic, and shows everything for editing and approval before saving |
 | **Add Bill** | Enter a bill by hand when there's no document to scan |
-| **Users & Access** | Admin-managed accounts (no public sign-up) |
+| **Users & Access** | Restaurant-admin-managed accounts, scoped to that restaurant (no public sign-up) |
+| **Platform → Restaurants** (SUPER_ADMIN only) | Create restaurants, assign their first admin, activate/deactivate — no business data visible here |
 
 Every screen exports to **CSV**, **Excel** (multi-sheet) and **PDF** on the
 restaurant's letterhead.
@@ -76,8 +82,11 @@ Create the initial accounts:
 npm run seed:users
 ```
 
-That prints an `admin` and a `junction14` password once. Change them from
-**Settings** after signing in.
+That prints a single `admin` (`SUPER_ADMIN`, Partywalas platform admin)
+password once — change it from **Settings** after signing in. Restaurant
+accounts (`RESTAURANT_ADMIN`, e.g. `junction14`) are created from that
+admin's **Platform → Restaurants** page, which creates the restaurant and
+its first admin together.
 
 ### Environment
 
@@ -112,9 +121,10 @@ src/
 │                         (Next.js 16 renamed middleware.ts → proxy.ts)
 ├── app/
 │   ├── layout.tsx        Shell; renders the sidebar only when signed in
-│   ├── page.tsx          Overview dashboard
+│   ├── page.tsx          Overview dashboard (restaurant users only)
 │   ├── signin/           Sign-in page (the only public route)
-│   ├── users/            Admin-only account management
+│   ├── platform/         SUPER_ADMIN-only: create/manage restaurants
+│   ├── users/            Restaurant-admin-only account management
 │   ├── sales/ menu/ profitability/ labor/ waste/      Revenue side
 │   ├── bills/ expenses/ inventory/ vendors/ products/ Purchase side
 │   ├── balance-sheet/ analytics/ settings/ upload/
@@ -125,8 +135,10 @@ src/
 │   ├── sales.ts          Read model — sales, menu costing, P&L
 │   ├── actions.ts        Server actions — purchase side
 │   ├── sales-actions.ts  Server actions — revenue side
-│   ├── auth.ts           Session cookies + requireUser/requireAdmin guards
-│   ├── auth-actions.ts   Sign-in, sign-out, user administration
+│   ├── auth.ts           Session cookies; requireUser/requireRestaurantUser/
+│   │                     requireRestaurantAdmin/requireSuperAdmin guards
+│   ├── auth-actions.ts   Sign-in, sign-out, user administration, restaurant
+│   │                     creation (platform)
 │   ├── session.ts        JWT primitives (shared with proxy.ts)
 │   ├── password.ts       scrypt hashing (shared with the seed script)
 │   ├── import.ts         Extracted bills → database rows
@@ -146,13 +158,24 @@ Access is enforced in **two layers**, and the second is the one that matters:
 1. `src/proxy.ts` checks the session cookie and redirects signed-out requests.
    This is an *optimistic* check — it cannot tell whether the account still
    exists or has been deactivated.
-2. `requireUser()` / `requireAdmin()` in pages and server actions, and
-   `apiAuthGuard()` in route handlers, re-read the user from the database on
-   every request. **This is the real guard.**
+2. `requireUser()` / `requireRestaurantUser()` / `requireRestaurantAdmin()` /
+   `requireSuperAdmin()` in pages and server actions, and `apiAuthGuard()` /
+   `apiRestaurantGuard()` in route handlers, re-read the user from the
+   database on every request. **This is the real guard.**
 
 The split matters because server actions and route handlers are individually
 addressable HTTP endpoints. A new page, action or handler added without one of
 those calls is not protected by the proxy alone.
+
+**Tenant isolation is enforced the same way, one layer deeper.**
+`requireRestaurantUser()` returns a `restaurantId` that is non-nullable *at
+the type level* — a `SUPER_ADMIN` (whose `restaurantId` is always `null`)
+cannot satisfy that return type, so it is structurally impossible for
+platform-admin code to call a restaurant-scoped data function. Every business
+table carries a `restaurantId`, every read in `src/lib/data.ts` and
+`src/lib/sales.ts` takes it as its first parameter and filters by it, and
+every update/delete server action re-checks `findFirst({ id, restaurantId })`
+before mutating rather than trusting a client-supplied id.
 
 Sessions are signed JWTs in an httpOnly cookie (12-hour expiry). Passwords are
 scrypt hashes in the format `scrypt:<salt>:<hash>` — `password.ts` is deliberately
@@ -165,10 +188,18 @@ byte-identical hashes to the running app.
 
 Defined in [`prisma/schema.prisma`](prisma/schema.prisma). The main entities:
 
+**Tenant** — `Restaurant` (name, address, GSTIN, `isActive`)
 **Purchases** — `Vendor`, `Bill`, `BillLineItem`, `Product`, `InventoryMovement`, `Payment`
 **Revenue** — `MenuItem`, `RecipeIngredient`, `DailySales`, `MenuItemSale`
 **Operations** — `LaborCost`, `WasteEntry`
-**System** — `User`, `RestaurantProfile`
+**System** — `User`, `ActivityLog`
+
+`Vendor`, `Product`, `Bill`, `MenuItem`, `DailySales`, `LaborCost` and
+`WasteEntry` each carry a required `restaurantId`. `Payment`, `BillLineItem`,
+`InventoryMovement`, `RecipeIngredient` and `MenuItemSale` deliberately don't
+duplicate it — they're scoped through their parent relation (e.g.
+`bill: { restaurantId }`) so there's no second copy of the tenant id to drift.
+`User.restaurantId` is nullable — `null` only for a `SUPER_ADMIN`.
 
 ### Things worth knowing before you trust a number
 
@@ -214,7 +245,7 @@ Defined in [`prisma/schema.prisma`](prisma/schema.prisma). The main entities:
 | `npm run build` | Production build |
 | `npm start` | Serve the production build |
 | `npm run lint` | ESLint |
-| `npm run seed:users` | Create the initial admin / junction14 accounts (re-runnable; never overwrites an existing password) |
+| `npm run seed:users` | Create the initial Partywalas `admin` (`SUPER_ADMIN`) account (re-runnable; never overwrites an existing password) |
 | `npm run merge-vendors` | Report duplicate vendor records; `-- --apply` merges them |
 
 The original 27 invoices were loaded once via the same `src/lib/import.ts` path
@@ -248,9 +279,6 @@ Back up `dev.db` on the server before any schema change.
 
 ## Current limitations
 
-- **Single tenant.** Users are logins, not separate restaurants — everyone with
-  an account sees the same data. Supporting a second restaurant means adding a
-  tenant column and scoping every query, not flipping a setting.
 - **SQLite on one machine.** Fine at this size; it is the constraint to revisit
   before scaling out, since it rules out multiple app instances.
 - **Sign-in throttling is in-memory**, so it resets when the process restarts.

@@ -1,13 +1,13 @@
-# Product Requirements Document — Junction 14 Restaurant CRM
+# Product Requirements Document — Partywalas Restaurant CRM
 
 **Status:** Live in production at [restaurant.partywalas.com](https://restaurant.partywalas.com)
-**Last updated:** reflects the codebase as of commit `b6d9319`
+**Last updated:** reflects the multi-tenant rebuild (Partywalas platform + Junction 14 as its first restaurant)
 
 ---
 
 ## 1. Purpose
 
-A back-office system for a single restaurant (Junction 14) that replaces manual bill-tracking with one system of record. It answers three questions an owner needs answered every month:
+A back-office system for restaurants that replaces manual bill-tracking with one system of record per restaurant. It answers three questions an owner needs answered every month:
 
 1. What did we spend, on what, with whom? (Purchases)
 2. What did we sell, and at what margin? (Sales & Menu)
@@ -15,12 +15,30 @@ A back-office system for a single restaurant (Junction 14) that replaces manual 
 
 The guiding principle: **a bill is entered once** — either scanned or typed — and every other view (expenses, inventory, payables, cost-of-goods) is derived from it. There is no separate data-entry step for expenses or stock.
 
+Partywalas is the platform. Each restaurant given CRM access is a **tenant**
+with its own team and its own isolated data — Junction 14 is the first.
+
 ## 2. Users
 
-- **Admin** — full access, plus user management (create/deactivate/delete accounts, reset passwords). Currently: `admin`.
-- **User** — full access to all business data, no user management. Currently: `junction14`.
+Three roles:
 
-No public sign-up. Admin creates every account. This is a single-tenant system: all users see the same restaurant's data — there is no concept of multiple restaurants or data isolation between accounts.
+- **SUPER_ADMIN** (Partywalas platform admin, currently: `admin`) — creates and
+  activates/deactivates restaurant accounts from **Platform → Restaurants**.
+  Deliberately **cannot** see any restaurant's business data — `restaurantId`
+  is `null` on this role and every business-data function requires a non-null
+  one, so this is a structural guarantee, not a policy.
+- **RESTAURANT_ADMIN** — full access to their own restaurant's data, plus user
+  management for that restaurant (create/deactivate/delete accounts, reset
+  passwords). Currently: `junction14`.
+- **USER** — full access to their own restaurant's business data, no user
+  management.
+
+No public sign-up. Accounts are created by the admin one level up (Partywalas
+admin creates restaurant admins; restaurant admins create their own team).
+Every business table is scoped by `restaurantId`; a user from one restaurant
+can never see or reach another restaurant's data — enforced by query scoping
+plus a per-row ownership check on every mutation, not just by what the UI
+shows.
 
 ## 3. Core Domain Model
 
@@ -98,8 +116,17 @@ Purchases and sales are two independent data feeds that meet at the P&L through 
 
 | Requirement | Status |
 |---|---|
-| Restaurant profile (name, address, GSTIN) drives branding across the app | ✅ Live |
+| Restaurant profile (name, address, GSTIN) drives branding across the app, editable by that restaurant's admin | ✅ Live |
 | OpenAI model configurable via env var | ✅ Live |
+
+### 4.6 Platform (Partywalas)
+
+| Requirement | Status |
+|---|---|
+| SUPER_ADMIN can create a restaurant + its first RESTAURANT_ADMIN together | ✅ Live |
+| SUPER_ADMIN can activate/deactivate a restaurant | ✅ Live |
+| SUPER_ADMIN sees account/restaurant metadata only, never business data | ✅ Live — structural, not just UI (see §2) |
+| Restaurant-scoped data isolation across every table and query | ✅ Live |
 
 ## 5. Non-Functional Requirements
 
@@ -109,16 +136,15 @@ Purchases and sales are two independent data feeds that meet at the P&L through 
 
 ## 6. Out of Scope (by design, not oversight)
 
-- **Multi-tenant / multi-restaurant.** Explicitly deferred — see §8.
 - **Customer-level analysis** (repeat visits, customer lifetime value, loyalty). No customer identity exists anywhere in the data — sales are recorded per-day, not per-order or per-customer, and the PetPooja import carries no customer field. Building this would mean fabricating data. Would require a schema and POS-integration change first (see Audit).
 - **Real statistical forecasting.** The "projection" feature is a labeled linear trend line over available months, not a demand-forecasting model.
 - **Reservations, table management, POS/order-taking.** This is a back-office analysis tool, not a POS.
 
 ## 7. Current Data (production, as of this writing)
 
-- 31 bills, 4 vendors, 2 user accounts
-- 2 vendors matched and merged after a case-sensitivity bug (fixed)
-- 2 bills still fail arithmetic verification and need manual correction against the paper copy (predate the verification feature)
+Pre-migration figures (single-restaurant era, now Junction 14's tenant data):
+31 bills, 4 vendors. See `docs/AUDIT.md` for the currently-open data issues
+inherited by Junction 14's tenant.
 
 ## 8. Known Gaps / Next Priorities
 
@@ -126,5 +152,4 @@ See `docs/AUDIT.md` for the full feature audit. Highest-priority open items:
 
 1. **Correct the 2 flagged legacy bills** (A001579, A000886) — data fix, not code, needs the paper originals.
 2. **Rotate the OpenAI API key** — pasted into chat during setup, should be treated as compromised.
-3. **Multi-restaurant support** — if this tool is ever handed to a second restaurant, every query needs tenant scoping; currently all users share one dataset.
-4. **SQLite → networked database** — acceptable at current scale; blocks running more than one app instance.
+3. **SQLite → networked database** — acceptable at current scale; blocks running more than one app instance.
