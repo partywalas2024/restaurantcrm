@@ -1,27 +1,34 @@
 // Server actions for the purchase side — bills, products, vendors, payments,
 // stock adjustments and the restaurant profile.
 //
-// Each action re-checks the session with `requireUser()`. That is not
-// belt-and-braces: server actions are individually addressable HTTP endpoints,
-// so the sign-in gate in proxy.ts does not protect them on its own.
+// Each action re-checks the session with `requireRestaurantUser()`. That is
+// not belt-and-braces: server actions are individually addressable HTTP
+// endpoints, so the sign-in gate in proxy.ts does not protect them on its
+// own, and `requireRestaurantUser()` is also the tenant boundary — every
+// mutation below is scoped to the caller's own restaurant, and every
+// update/delete re-verifies the target row actually belongs to it before
+// touching it, rather than trusting an id from the form.
 
 "use server";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireRestaurantUser, requireRestaurantAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
 import { importBills, type ExtractedBill, type ExtractedItem } from "@/lib/import";
 import type { PaymentMethod, PaymentStatus, ProductCategory } from "@/generated/prisma/enums";
 
 export async function updateBill(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
   const paymentStatus = formData.get("paymentStatus") as PaymentStatus | null;
   const category = formData.get("category") as ProductCategory | null;
   const notes = formData.get("notes") as string | null;
   const billNumber = formData.get("billNumber") as string | null;
+
+  const existing = await prisma.bill.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Bill not found.");
 
   const updated = await prisma.bill.update({
     where: { id },
@@ -42,13 +49,16 @@ export async function updateBill(formData: FormData) {
 }
 
 export async function updateProduct(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
   const category = formData.get("category") as ProductCategory | null;
   const reorderLevel = formData.get("reorderLevel");
   const currentStock = formData.get("currentStock");
   const unit = formData.get("unit") as string | null;
   const name = formData.get("name") as string | null;
+
+  const existing = await prisma.product.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Product not found.");
 
   const updated = await prisma.product.update({
     where: { id },
@@ -69,7 +79,7 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function updateVendor(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
   const name = (formData.get("name") as string | null)?.trim();
   const phone = formData.get("phone") as string | null;
@@ -80,6 +90,9 @@ export async function updateVendor(formData: FormData) {
   if (name !== undefined && name !== null && name === "") {
     throw new Error("Vendor name cannot be empty.");
   }
+
+  const existing = await prisma.vendor.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Vendor not found.");
 
   const updated = await prisma.vendor.update({
     where: { id },
@@ -102,7 +115,7 @@ export async function updateVendor(formData: FormData) {
 }
 
 export async function createVendor(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Vendor name is required.");
   const phone = (formData.get("phone") as string | null) || null;
@@ -112,16 +125,17 @@ export async function createVendor(formData: FormData) {
 
   // Same normalized match the bill importer uses, so adding a vendor by hand
   // can't create a second account for a supplier that already exists under a
-  // different capitalisation.
+  // different capitalisation — scoped to this restaurant, since another
+  // restaurant having a same-named vendor is not a collision at all.
   const key = name.toLowerCase().replace(/\s+/g, " ");
-  const existing = await prisma.vendor.findMany({ select: { id: true, name: true } });
+  const existing = await prisma.vendor.findMany({ where: { restaurantId: user.restaurantId }, select: { id: true, name: true } });
   const clash = existing.find((v) => v.name.trim().toLowerCase().replace(/\s+/g, " ") === key);
   if (clash) {
     redirect(`/vendors/${clash.id}?exists=${encodeURIComponent(clash.name)}`);
   }
 
   const vendor = await prisma.vendor.create({
-    data: { name, phone, address, gstin, notes },
+    data: { restaurantId: user.restaurantId, name, phone, address, gstin, notes },
   });
   await logActivity(user, "CREATE", "Vendor", vendor.id, `Created vendor ${vendor.name}`);
 
@@ -131,7 +145,7 @@ export async function createVendor(formData: FormData) {
 }
 
 export async function recordPayment(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
   const vendorId = String(formData.get("vendorId"));
   const date = new Date(String(formData.get("date")));
   const amount = Number(formData.get("amount"));
@@ -143,11 +157,11 @@ export async function recordPayment(formData: FormData) {
     throw new Error("Payment amount must be a positive number.");
   }
 
-  const [payment, payVendor] = await Promise.all([
-    prisma.payment.create({ data: { vendorId, date, amount, method, reference, notes } }),
-    prisma.vendor.findUnique({ where: { id: vendorId }, select: { name: true } }),
-  ]);
-  await logActivity(user, "CREATE", "Payment", payment.id, `Recorded payment of Rs. ${amount.toFixed(2)} (${method}) to ${payVendor?.name ?? vendorId}`);
+  const payVendor = await prisma.vendor.findFirst({ where: { id: vendorId, restaurantId: user.restaurantId }, select: { name: true } });
+  if (!payVendor) throw new Error("Vendor not found.");
+
+  const payment = await prisma.payment.create({ data: { vendorId, date, amount, method, reference, notes } });
+  await logActivity(user, "CREATE", "Payment", payment.id, `Recorded payment of Rs. ${amount.toFixed(2)} (${method}) to ${payVendor.name}`);
 
   revalidatePath(`/vendors/${vendorId}`);
   revalidatePath("/vendors");
@@ -156,16 +170,16 @@ export async function recordPayment(formData: FormData) {
 }
 
 export async function deletePayment(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
   const vendorId = String(formData.get("vendorId"));
 
-  const [existing, delVendor] = await Promise.all([
-    prisma.payment.findUnique({ where: { id } }),
-    prisma.vendor.findUnique({ where: { id: vendorId }, select: { name: true } }),
-  ]);
+  const existing = await prisma.payment.findFirst({ where: { id, vendor: { restaurantId: user.restaurantId } } });
+  if (!existing) throw new Error("Payment not found.");
+  const delVendor = await prisma.vendor.findUnique({ where: { id: vendorId }, select: { name: true } });
+
   await prisma.payment.delete({ where: { id } });
-  await logActivity(user, "DELETE", "Payment", id, `Deleted payment of Rs. ${(existing?.amount ?? 0).toFixed(2)} to ${delVendor?.name ?? vendorId}`);
+  await logActivity(user, "DELETE", "Payment", id, `Deleted payment of Rs. ${existing.amount.toFixed(2)} to ${delVendor?.name ?? vendorId}`);
 
   revalidatePath(`/vendors/${vendorId}`);
   revalidatePath("/vendors");
@@ -174,12 +188,13 @@ export async function deletePayment(formData: FormData) {
 }
 
 export async function adjustStock(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
   const productId = String(formData.get("productId"));
   const delta = Number(formData.get("delta"));
   const notes = (formData.get("notes") as string | null) ?? "";
 
-  const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+  const product = await prisma.product.findFirst({ where: { id: productId, restaurantId: user.restaurantId } });
+  if (!product) throw new Error("Product not found.");
 
   await prisma.$transaction([
     prisma.product.update({
@@ -203,20 +218,20 @@ export async function adjustStock(formData: FormData) {
   revalidatePath("/");
 }
 
+/** Restaurant profile edits (address, GSTIN...) are admin-level, same as user management. */
 export async function updateRestaurantProfile(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantAdmin();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Restaurant name is required.");
   const address = (formData.get("address") as string | null) || null;
   const phone = (formData.get("phone") as string | null) || null;
   const gstin = (formData.get("gstin") as string | null) || null;
 
-  await prisma.restaurantProfile.upsert({
-    where: { id: "default" },
-    update: { name, address, phone, gstin },
-    create: { id: "default", name, address, phone, gstin },
+  await prisma.restaurant.update({
+    where: { id: user.restaurantId },
+    data: { name, address, phone, gstin },
   });
-  await logActivity(user, "UPDATE", "RestaurantProfile", "default", `Updated restaurant profile (${name})`);
+  await logActivity(user, "UPDATE", "Restaurant", user.restaurantId, `Updated restaurant profile (${name})`);
 
   revalidatePath("/", "layout");
 }
@@ -231,7 +246,7 @@ export async function updateRestaurantProfile(formData: FormData) {
  * afterwards.
  */
 export async function createManualBill(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireRestaurantUser();
 
   const vendorName = String(formData.get("vendorName") ?? "").trim();
   const billNumber = String(formData.get("billNumber") ?? "").trim();
@@ -289,6 +304,7 @@ export async function createManualBill(formData: FormData) {
   };
 
   const result = await importBills(
+    user.restaurantId,
     {
       name: vendorName,
       phone: String(formData.get("vendorPhone") ?? "").trim() || undefined,

@@ -6,13 +6,13 @@
 
 import { SignJWT, jwtVerify } from "jose";
 
-export const SESSION_COOKIE = "j14_session";
+export const SESSION_COOKIE = "pw_session";
 
 /** 12 hours — a restaurant shift plus slack, short enough that a forgotten
  *  session on a shared back-office machine expires the same day. */
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 
-export type SessionRole = "ADMIN" | "USER";
+export type SessionRole = "SUPER_ADMIN" | "RESTAURANT_ADMIN" | "USER";
 
 export type SessionPayload = {
   userId: string;
@@ -49,7 +49,7 @@ export async function decryptSession(
     });
     const { userId, username, role } = payload as Record<string, unknown>;
     if (typeof userId !== "string" || typeof username !== "string") return null;
-    if (role !== "ADMIN" && role !== "USER") return null;
+    if (role !== "SUPER_ADMIN" && role !== "RESTAURANT_ADMIN" && role !== "USER") return null;
     return { userId, username, role };
   } catch {
     // Expired, tampered with, or signed under an old secret — all mean

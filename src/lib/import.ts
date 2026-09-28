@@ -60,9 +60,10 @@ function vendorKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-async function resolveVendor(info: ExtractedVendor) {
+async function resolveVendor(restaurantId: string, info: ExtractedVendor) {
   const key = vendorKey(info.name);
   const existing = await prisma.vendor.findMany({
+    where: { restaurantId },
     select: { id: true, name: true, phone: true, address: true, gstin: true },
   });
   const match = existing.find((v) => vendorKey(v.name) === key);
@@ -70,6 +71,7 @@ async function resolveVendor(info: ExtractedVendor) {
   if (!match) {
     return prisma.vendor.create({
       data: {
+        restaurantId,
         name: info.name.trim(),
         phone: info.phone,
         address: info.address,
@@ -92,11 +94,12 @@ async function resolveVendor(info: ExtractedVendor) {
 }
 
 export async function importBills(
+  restaurantId: string,
   vendorInfo: ExtractedVendor,
   bills: ExtractedBill[],
   sourceFile?: string
 ) {
-  const vendor = await resolveVendor(vendorInfo);
+  const vendor = await resolveVendor(restaurantId, vendorInfo);
 
   const productCache = new Map<string, string>(); // normalized name -> product id
   let billsCreated = 0;
@@ -111,6 +114,7 @@ export async function importBills(
 
     const createdBill = await prisma.bill.create({
       data: {
+        restaurantId,
         billNumber: bill.billNumber,
         billNumberRaw: bill.billNumber,
         type: bill.type,
@@ -138,13 +142,14 @@ export async function importBills(
       let productId = productCache.get(normalized);
 
       if (!productId) {
-        const existing = await prisma.product.findUnique({ where: { name: normalized } });
+        const existing = await prisma.product.findFirst({ where: { name: normalized, restaurantId } });
         if (existing) {
           productId = existing.id;
         } else {
           const category = inferCategory(normalized);
           const created = await prisma.product.create({
             data: {
+              restaurantId,
               name: normalized,
               category,
               unit: item.unit,

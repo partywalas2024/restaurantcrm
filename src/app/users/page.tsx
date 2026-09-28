@@ -3,7 +3,7 @@ import { UserPlus, AlertCircle, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
-import { requireAdmin } from "@/lib/auth";
+import { requireRestaurantAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 
@@ -14,10 +14,11 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<{ created?: string; deleted?: string; error?: string }>;
 }) {
-  const admin = await requireAdmin();
+  const admin = await requireRestaurantAdmin();
   const params = await searchParams;
 
   const users = await prisma.user.findMany({
+    where: { restaurantId: admin.restaurantId },
     orderBy: [{ role: "asc" }, { username: "asc" }],
     select: {
       id: true,
@@ -35,7 +36,7 @@ export default async function UsersPage({
     <div>
       <PageHeader
         title="Users & Access"
-        description="Everyone who can sign in to this CRM. There is no public sign-up — accounts are created here."
+        description={`Everyone who can sign in to ${admin.restaurantName}'s CRM. There is no public sign-up — accounts are created here.`}
         actions={
           <Link
             href="/users/new"
@@ -92,8 +93,8 @@ export default async function UsersPage({
                       <p className="text-xs text-muted">@{u.username}{u.email ? ` · ${u.email}` : ""}</p>
                     </td>
                     <td className="py-2.5">
-                      <Badge tone={u.role === "ADMIN" ? "info" : "neutral"}>
-                        {u.role === "ADMIN" ? "Admin" : "User"}
+                      <Badge tone={u.role === "RESTAURANT_ADMIN" ? "info" : "neutral"}>
+                        {u.role === "RESTAURANT_ADMIN" ? "Admin" : "User"}
                       </Badge>
                     </td>
                     <td className="py-2.5">

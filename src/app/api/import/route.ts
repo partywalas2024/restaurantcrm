@@ -2,12 +2,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { importBills, type ExtractedBill, type ExtractedVendor } from "@/lib/import";
-import { apiAuthGuard, getCurrentUser } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
 
 export async function POST(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   try {
     const body = (await req.json()) as {
@@ -20,8 +21,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Malformed import payload." }, { status: 400 });
     }
 
-    const result = await importBills(body.vendor, body.bills, body.fileName);
-    const user = await getCurrentUser();
+    const result = await importBills(user.restaurantId, body.vendor, body.bills, body.fileName);
     await logActivity(
       user,
       "IMPORT",

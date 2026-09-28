@@ -4,12 +4,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { getMenuItems } from "@/lib/sales";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatINR } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function MenuPage() {
-  const items = await getMenuItems();
+  const user = await requireRestaurantUser();
+  const items = await getMenuItems(user.restaurantId);
   const activeItems = items.filter((i) => i.active);
   const missingRecipeCount = activeItems.filter((i) => !i.hasRecipe).length;
 

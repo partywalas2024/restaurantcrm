@@ -3,8 +3,15 @@
 // Sign-in deliberately returns one generic failure message for every cause
 // (unknown user, wrong password, deactivated account) so the form cannot be
 // used to enumerate valid usernames, and repeated failures lock the account
-// briefly. Admin actions additionally guard against an admin removing the last
-// remaining admin and locking the business out of its own CRM.
+// briefly.
+//
+// Two separate admin surfaces:
+//   - Restaurant-admin actions (create/update/reset/delete a USER or
+//     RESTAURANT_ADMIN) are scoped to the acting admin's own restaurant, and
+//     guard against removing the last active RESTAURANT_ADMIN within it.
+//   - Platform actions (create a restaurant + its first admin, activate/
+//     deactivate a restaurant) are SUPER_ADMIN only and never touch a
+//     restaurant's business data.
 
 "use server";
 
@@ -15,7 +22,8 @@ import {
   createSession,
   destroySession,
   hashPassword,
-  requireAdmin,
+  requireRestaurantAdmin,
+  requireSuperAdmin,
   requireUser,
   validatePassword,
   verifyPassword,
@@ -56,6 +64,8 @@ function clearFailures(key: string) {
 function normalizeUsername(value: FormDataEntryValue | null): string {
   return String(value ?? "").trim().toLowerCase();
 }
+
+const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
 
 /** Only same-site paths, so `?next=` can't be used as an open redirect. */
 function safeRedirectTarget(value: FormDataEntryValue | null): string {
@@ -115,21 +125,21 @@ export async function signOutAction() {
   redirect("/signin");
 }
 
-// ---- Admin: user management ----
+// ---- Restaurant admin: manage this restaurant's own team ----
 
 export async function createUserAction(
   _prevState: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const admin = await requireAdmin();
+  const admin = await requireRestaurantAdmin();
 
   const username = normalizeUsername(formData.get("username"));
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
-  const role = formData.get("role") === "ADMIN" ? "ADMIN" : "USER";
+  const role = formData.get("role") === "RESTAURANT_ADMIN" ? "RESTAURANT_ADMIN" : "USER";
   const password = String(formData.get("password") ?? "");
 
-  if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+  if (!USERNAME_RE.test(username)) {
     return {
       error:
         "Username must be 3–32 characters, using only letters, numbers, dot, underscore or hyphen.",
@@ -149,6 +159,7 @@ export async function createUserAction(
       name,
       email: email || null,
       role,
+      restaurantId: admin.restaurantId,
       passwordHash: await hashPassword(password),
     },
   });
@@ -162,29 +173,29 @@ export async function updateUserAction(
   _prevState: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const admin = await requireAdmin();
+  const admin = await requireRestaurantAdmin();
   const id = String(formData.get("id") ?? "");
 
-  const target = await prisma.user.findUnique({ where: { id } });
+  const target = await prisma.user.findFirst({ where: { id, restaurantId: admin.restaurantId } });
   if (!target) return { error: "User not found." };
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
-  const role = formData.get("role") === "ADMIN" ? "ADMIN" : "USER";
+  const role = formData.get("role") === "RESTAURANT_ADMIN" ? "RESTAURANT_ADMIN" : "USER";
   const isActive = formData.get("isActive") === "on";
 
   if (!name) return { error: "Full name is required." };
 
-  // Guard rails against locking the whole business out of its own CRM.
-  if (target.id === admin.id && (role !== "ADMIN" || !isActive)) {
+  // Guard rails against locking this restaurant's team out of its own CRM.
+  if (target.id === admin.id && (role !== "RESTAURANT_ADMIN" || !isActive)) {
     return { error: "You cannot remove your own admin access." };
   }
-  if (target.role === "ADMIN" && (role !== "ADMIN" || !isActive)) {
+  if (target.role === "RESTAURANT_ADMIN" && (role !== "RESTAURANT_ADMIN" || !isActive)) {
     const otherAdmins = await prisma.user.count({
-      where: { role: "ADMIN", isActive: true, id: { not: target.id } },
+      where: { role: "RESTAURANT_ADMIN", restaurantId: admin.restaurantId, isActive: true, id: { not: target.id } },
     });
     if (otherAdmins === 0) {
-      return { error: "This is the only active admin — promote someone else first." };
+      return { error: "This is the only active admin for this restaurant — promote someone else first." };
     }
   }
 
@@ -208,7 +219,7 @@ export async function resetPasswordAction(
   _prevState: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const admin = await requireAdmin();
+  const admin = await requireRestaurantAdmin();
 
   const id = String(formData.get("id") ?? "");
   const password = String(formData.get("password") ?? "");
@@ -216,7 +227,7 @@ export async function resetPasswordAction(
   const passwordError = validatePassword(password);
   if (passwordError) return { error: passwordError };
 
-  const target = await prisma.user.findUnique({ where: { id } });
+  const target = await prisma.user.findFirst({ where: { id, restaurantId: admin.restaurantId } });
   if (!target) return { error: "User not found." };
 
   await prisma.user.update({
@@ -230,24 +241,24 @@ export async function resetPasswordAction(
 }
 
 export async function deleteUserAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireRestaurantAdmin();
   const id = String(formData.get("id") ?? "");
 
   if (id === admin.id) {
     redirect("/users?error=" + encodeURIComponent("You cannot delete your own account."));
   }
 
-  const target = await prisma.user.findUnique({ where: { id } });
+  const target = await prisma.user.findFirst({ where: { id, restaurantId: admin.restaurantId } });
   if (!target) redirect("/users");
 
-  if (target.role === "ADMIN") {
+  if (target.role === "RESTAURANT_ADMIN") {
     const otherAdmins = await prisma.user.count({
-      where: { role: "ADMIN", isActive: true, id: { not: id } },
+      where: { role: "RESTAURANT_ADMIN", restaurantId: admin.restaurantId, isActive: true, id: { not: id } },
     });
     if (otherAdmins === 0) {
       redirect(
         "/users?error=" +
-          encodeURIComponent("This is the only active admin — promote someone else first."),
+          encodeURIComponent("This is the only active admin for this restaurant — promote someone else first."),
       );
     }
   }
@@ -256,6 +267,74 @@ export async function deleteUserAction(formData: FormData) {
   await logActivity(admin, "DELETE", "User", id, `Deleted user @${target.username} (${target.name})`);
   revalidatePath("/users");
   redirect("/users?deleted=" + encodeURIComponent(target.username));
+}
+
+// ---- Partywalas platform: create and manage restaurants ----
+
+export async function createRestaurantAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const platformAdmin = await requireSuperAdmin();
+
+  const restaurantName = String(formData.get("restaurantName") ?? "").trim();
+  const address = (String(formData.get("address") ?? "").trim() || null);
+  const phone = (String(formData.get("phone") ?? "").trim() || null);
+  const gstin = (String(formData.get("gstin") ?? "").trim() || null);
+
+  const username = normalizeUsername(formData.get("username"));
+  const adminName = String(formData.get("adminName") ?? "").trim();
+  const email = (String(formData.get("email") ?? "").trim() || null);
+  const password = String(formData.get("password") ?? "");
+
+  if (!restaurantName) return { error: "Restaurant name is required." };
+  if (!USERNAME_RE.test(username)) {
+    return { error: "Username must be 3–32 characters, using only letters, numbers, dot, underscore or hyphen." };
+  }
+  if (!adminName) return { error: "The restaurant admin's full name is required." };
+  const passwordError = validatePassword(password);
+  if (passwordError) return { error: passwordError };
+
+  const existingUsername = await prisma.user.findUnique({ where: { username } });
+  if (existingUsername) return { error: `Username "${username}" is already taken.` };
+
+  const restaurant = await prisma.restaurant.create({
+    data: { name: restaurantName, address, phone, gstin },
+  });
+  await prisma.user.create({
+    data: {
+      username,
+      name: adminName,
+      email,
+      role: "RESTAURANT_ADMIN",
+      restaurantId: restaurant.id,
+      passwordHash: await hashPassword(password),
+    },
+  });
+  await logActivity(platformAdmin, "CREATE", "Restaurant", restaurant.id, `Created restaurant "${restaurantName}" with admin @${username}`);
+
+  revalidatePath("/platform");
+  redirect(`/platform?created=${encodeURIComponent(restaurantName)}`);
+}
+
+export async function setRestaurantActiveAction(formData: FormData) {
+  const platformAdmin = await requireSuperAdmin();
+  const id = String(formData.get("id") ?? "");
+  const isActive = formData.get("isActive") === "on";
+
+  const restaurant = await prisma.restaurant.findUnique({ where: { id } });
+  if (!restaurant) redirect("/platform");
+
+  await prisma.restaurant.update({ where: { id }, data: { isActive } });
+  await logActivity(
+    platformAdmin,
+    "UPDATE",
+    "Restaurant",
+    id,
+    `${isActive ? "Reactivated" : "Deactivated"} restaurant "${restaurant.name}"`,
+  );
+
+  revalidatePath("/platform");
 }
 
 // ---- Self-service ----

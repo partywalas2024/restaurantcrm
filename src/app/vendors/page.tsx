@@ -5,14 +5,16 @@ import { Badge } from "@/components/Badge";
 import { ExportButton } from "@/components/ExportButton";
 import { StatCard } from "@/components/StatCard";
 import { getVendors } from "@/lib/data";
-import { getRestaurantProfile } from "@/lib/settings";
+import { getRestaurant } from "@/lib/settings";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { Truck, Receipt, Package, Clock, Plus, FileText } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function VendorsPage() {
-  const [vendors, profile] = await Promise.all([getVendors(), getRestaurantProfile()]);
+  const user = await requireRestaurantUser();
+  const [vendors, profile] = await Promise.all([getVendors(user.restaurantId), getRestaurant(user.restaurantId)]);
   const totalSpend = vendors.reduce((s, v) => s + v.totalAmount, 0);
   const totalPending = vendors.reduce((s, v) => s + v.pendingAmount, 0);
 

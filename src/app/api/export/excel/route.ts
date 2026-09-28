@@ -18,12 +18,12 @@ import {
   getAvailableMonths,
 } from "@/lib/data";
 import { addTableSheet, addSummarySheet, newWorkbook, workbookResponse, slugFilename } from "@/lib/excel";
-import { getRestaurantProfile } from "@/lib/settings";
+import { getRestaurant } from "@/lib/settings";
 import { getRevenueTrend, getMenuItemPerformance, getSalesForMonth, getDayOfWeekPattern, projectNextValue } from "@/lib/sales";
 import { formatDate, formatMonth } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import type { ProductCategory } from "@/generated/prisma/enums";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 
 const BILL_COLUMNS = [
   { header: "Bill Number", key: "billNumber", width: 16 },
@@ -40,23 +40,24 @@ const BILL_COLUMNS = [
   { header: "Notes", key: "notes", width: 40 },
 ];
 
-async function resolveMonth(requested: string | null) {
-  const months = await getAvailableMonths();
+async function resolveMonth(restaurantId: string, requested: string | null) {
+  const months = await getAvailableMonths(restaurantId);
   return requested && months.includes(requested) ? requested : months[0];
 }
 
 export async function GET(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   const sp = req.nextUrl.searchParams;
   const kind = sp.get("kind") ?? "bills";
   const wb = newWorkbook();
-  const profile = await getRestaurantProfile();
+  const profile = await getRestaurant(user.restaurantId);
   const filePrefix = profile.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
 
   if (kind === "bills") {
-    const bills = await getBills({
+    const bills = await getBills(user.restaurantId, {
       vendorId: sp.get("vendorId") || undefined,
       category: (sp.get("category") as ProductCategory) || undefined,
       from: sp.get("from") || undefined,
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (kind === "vendors") {
-    const vendors = await getVendors();
+    const vendors = await getVendors(user.restaurantId);
     addTableSheet(
       wb,
       "Vendors",
@@ -120,7 +121,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (kind === "products") {
-    const products = await getProducts();
+    const products = await getProducts(user.restaurantId);
     addTableSheet(
       wb,
       "Products",
@@ -159,7 +160,7 @@ export async function GET(req: NextRequest) {
   if (kind === "ledger") {
     const vendorId = sp.get("vendorId");
     if (!vendorId) return NextResponse.json({ error: "vendorId is required." }, { status: 400 });
-    const ledger = await getVendorLedger(vendorId).catch(() => null);
+    const ledger = await getVendorLedger(user.restaurantId, vendorId).catch(() => null);
     if (!ledger) return NextResponse.json({ error: "Vendor not found." }, { status: 404 });
     const { vendor, entries, totalDebit, totalCredit, balance } = ledger;
 
@@ -196,9 +197,9 @@ export async function GET(req: NextRequest) {
   }
 
   if (kind === "overview") {
-    const month = await resolveMonth(sp.get("month"));
+    const month = await resolveMonth(user.restaurantId, sp.get("month"));
     if (!month) return NextResponse.json({ error: "No data available." }, { status: 404 });
-    const [overview, insights] = await Promise.all([getOverview(month), getInsights(month)]);
+    const [overview, insights] = await Promise.all([getOverview(user.restaurantId, month), getInsights(user.restaurantId, month)]);
 
     const summary = addSummarySheet(wb, "Summary", `Overview — ${formatMonth(`${month}-01`)}`);
     summary.addRow(["Total Monthly Spend", overview.totalSpend]);
@@ -253,9 +254,9 @@ export async function GET(req: NextRequest) {
   }
 
   if (kind === "expenses") {
-    const month = await resolveMonth(sp.get("month"));
+    const month = await resolveMonth(user.restaurantId, sp.get("month"));
     if (!month) return NextResponse.json({ error: "No data available." }, { status: 404 });
-    const overview = await getOverview(month);
+    const overview = await getOverview(user.restaurantId, month);
     const total = overview.categorySpend.reduce((s, c) => s + c.amount, 0);
 
     const summary = addSummarySheet(wb, "Summary", `Expense Analysis — ${formatMonth(`${month}-01`)}`);
@@ -284,18 +285,18 @@ export async function GET(req: NextRequest) {
   }
 
   if (kind === "analytics") {
-    const month = await resolveMonth(sp.get("month"));
+    const month = await resolveMonth(user.restaurantId, sp.get("month"));
     if (!month) return NextResponse.json({ error: "No data available." }, { status: 404 });
     const [overview, daily, vendors, products, trend, revenueTrend, menuPerf, salesMonth, dayPattern] = await Promise.all([
-      getOverview(month),
-      getDailyTrend(month),
-      getVendors(),
-      getProducts(),
-      getMonthlyTrend(),
-      getRevenueTrend(),
-      getMenuItemPerformance(month),
-      getSalesForMonth(month),
-      getDayOfWeekPattern(),
+      getOverview(user.restaurantId, month),
+      getDailyTrend(user.restaurantId, month),
+      getVendors(user.restaurantId),
+      getProducts(user.restaurantId),
+      getMonthlyTrend(user.restaurantId),
+      getRevenueTrend(user.restaurantId),
+      getMenuItemPerformance(user.restaurantId, month),
+      getSalesForMonth(user.restaurantId, month),
+      getDayOfWeekPattern(user.restaurantId),
     ]);
 
     addTableSheet(
@@ -429,7 +430,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (kind === "balance-sheet") {
-    const sheet = await getBalanceSheet();
+    const sheet = await getBalanceSheet(user.restaurantId);
 
     const summary = addSummarySheet(wb, "Summary", `Balance Sheet — ${formatDate(new Date())}`);
     summary.addRow(["Total Assets (Inventory)", sheet.totalAssets]);

@@ -57,7 +57,7 @@ export function NewUserForm() {
         <label className={LABEL}>Role *</label>
         <select name="role" defaultValue="USER" className={INPUT}>
           <option value="USER">User — full access to the CRM</option>
-          <option value="ADMIN">Admin — can also manage users</option>
+          <option value="RESTAURANT_ADMIN">Admin — can also manage users</option>
         </select>
       </div>
       <div>
@@ -95,7 +95,7 @@ export function EditUserForm({
         <label className={LABEL}>Role</label>
         <select name="role" defaultValue={user.role} className={INPUT}>
           <option value="USER">User — full access to the CRM</option>
-          <option value="ADMIN">Admin — can also manage users</option>
+          <option value="RESTAURANT_ADMIN">Admin — can also manage users</option>
         </select>
       </div>
       <label className="flex items-center gap-2 text-sm">

@@ -4,6 +4,7 @@ import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { ExportButton } from "@/components/ExportButton";
 import { getProducts } from "@/lib/data";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR, formatNumber } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 
@@ -15,7 +16,8 @@ export default async function ProductsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  const products = await getProducts();
+  const user = await requireRestaurantUser();
+  const products = await getProducts(user.restaurantId);
 
   const filtered = products
     .filter((p) => (sp.category ? p.category === sp.category : true))

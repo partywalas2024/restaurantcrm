@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { getBillById } from "@/lib/data";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { updateBill } from "@/lib/actions";
@@ -13,7 +14,8 @@ export const dynamic = "force-dynamic";
 
 export default async function BillDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const bill = await getBillById(id);
+  const user = await requireRestaurantUser();
+  const bill = await getBillById(user.restaurantId, id);
   if (!bill) notFound();
 
   return (

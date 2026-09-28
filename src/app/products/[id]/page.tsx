@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { prisma } from "@/lib/prisma";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { updateProduct } from "@/lib/actions";
@@ -12,8 +13,9 @@ export const dynamic = "force-dynamic";
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = await prisma.product.findUnique({
-    where: { id },
+  const user = await requireRestaurantUser();
+  const product = await prisma.product.findFirst({
+    where: { id, restaurantId: user.restaurantId },
     include: {
       vendor: true,
       lineItems: { include: { bill: true }, orderBy: { bill: { date: "desc" } } },

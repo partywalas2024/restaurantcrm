@@ -4,26 +4,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import { getBills, getVendors, getProducts } from "@/lib/data";
-import { getRestaurantProfile } from "@/lib/settings";
+import { getRestaurant } from "@/lib/settings";
 import { formatDate } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import type { ProductCategory } from "@/generated/prisma/enums";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   const sp = req.nextUrl.searchParams;
   const kind = sp.get("kind") ?? "bills";
-  const profile = await getRestaurantProfile();
+  const profile = await getRestaurant(user.restaurantId);
   const filePrefix = profile.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
 
   let rows: Record<string, unknown>[] = [];
   let filename = "export.csv";
 
   if (kind === "bills") {
-    const bills = await getBills({
+    const bills = await getBills(user.restaurantId, {
       vendorId: sp.get("vendorId") || undefined,
       category: (sp.get("category") as ProductCategory) || undefined,
       from: sp.get("from") || undefined,
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
     }));
     filename = `${filePrefix}-bills.csv`;
   } else if (kind === "vendors") {
-    const vendors = await getVendors();
+    const vendors = await getVendors(user.restaurantId);
     rows = vendors.map((v) => ({
       Vendor: v.name,
       Phone: v.phone ?? "",
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
     }));
     filename = `${filePrefix}-vendors.csv`;
   } else if (kind === "products") {
-    const products = await getProducts();
+    const products = await getProducts(user.restaurantId);
     rows = products.map((p) => ({
       Product: p.name,
       Category: CATEGORY_LABELS[p.category],

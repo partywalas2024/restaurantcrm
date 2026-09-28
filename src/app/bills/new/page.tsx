@@ -3,14 +3,15 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { ManualBillForm } from "@/components/ManualBillForm";
-import { requireUser } from "@/lib/auth";
+import { requireRestaurantUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewBillPage() {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const vendors = await prisma.vendor.findMany({
+    where: { restaurantId: user.restaurantId },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });

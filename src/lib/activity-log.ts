@@ -21,6 +21,7 @@ export async function logActivity(
   try {
     await prisma.activityLog.create({
       data: {
+        restaurantId: user?.restaurantId ?? null,
         userId: user?.id ?? null,
         userName: user?.name ?? "System",
         action,

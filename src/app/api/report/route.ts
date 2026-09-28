@@ -3,21 +3,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAvailableMonths, getOverview, getInsights, getVendors } from "@/lib/data";
 import { CATEGORY_LABELS } from "@/lib/categories";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   const monthParam = req.nextUrl.searchParams.get("month");
-  const months = await getAvailableMonths();
+  const months = await getAvailableMonths(user.restaurantId);
   const month = monthParam && months.includes(monthParam) ? monthParam : months[0];
   if (!month) return NextResponse.json({ error: "No data available." }, { status: 404 });
 
   const [overview, insights, vendors] = await Promise.all([
-    getOverview(month),
-    getInsights(month),
-    getVendors(),
+    getOverview(user.restaurantId, month),
+    getInsights(user.restaurantId, month),
+    getVendors(user.restaurantId),
   ]);
 
   const topBills = [...overview.bills]

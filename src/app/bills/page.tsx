@@ -5,6 +5,7 @@ import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { getBills } from "@/lib/data";
 import { prisma } from "@/lib/prisma";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { ExportButton } from "@/components/ExportButton";
@@ -20,9 +21,10 @@ export default async function BillsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  const vendors = await prisma.vendor.findMany({ orderBy: { name: "asc" } });
+  const user = await requireRestaurantUser();
+  const vendors = await prisma.vendor.findMany({ where: { restaurantId: user.restaurantId }, orderBy: { name: "asc" } });
 
-  const bills = await getBills({
+  const bills = await getBills(user.restaurantId, {
     vendorId: sp.vendorId || undefined,
     category: (sp.category as ProductCategory) || undefined,
     from: sp.from || undefined,

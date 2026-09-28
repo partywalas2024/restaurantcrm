@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { classifyChannel, classifyPayment, type SalesField } from "@/lib/sales-import";
-import { apiAuthGuard, getCurrentUser } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
 
 function parseDate(value: string): Date | null {
@@ -42,8 +42,9 @@ function parseNumber(value: string): number {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   const body = (await req.json()) as {
     rows: Record<string, string>[];
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
     }
 
     const dailySales = await prisma.dailySales.upsert({
-      where: { date },
+      where: { restaurantId_date: { restaurantId: user.restaurantId, date } },
       update: {
         dineInRevenue: revenue.dineIn,
         deliveryRevenue: revenue.delivery,
@@ -119,6 +120,7 @@ export async function POST(req: NextRequest) {
         source: "PETPOOJA_IMPORT",
       },
       create: {
+        restaurantId: user.restaurantId,
         date,
         dineInRevenue: revenue.dineIn,
         deliveryRevenue: revenue.delivery,
@@ -149,12 +151,12 @@ export async function POST(req: NextRequest) {
     for (const [key, entry] of byItem.entries()) {
       let menuItemId = menuItemCache.get(key);
       if (!menuItemId) {
-        const existing = await prisma.menuItem.findUnique({ where: { name: entry.name } });
+        const existing = await prisma.menuItem.findFirst({ where: { name: entry.name, restaurantId: user.restaurantId } });
         if (existing) {
           menuItemId = existing.id;
         } else {
           const created = await prisma.menuItem.create({
-            data: { name: entry.name, sellingPrice: entry.qty > 0 ? entry.revenue / entry.qty : 0 },
+            data: { restaurantId: user.restaurantId, name: entry.name, sellingPrice: entry.qty > 0 ? entry.revenue / entry.qty : 0 },
           });
           menuItemId = created.id;
         }
@@ -169,7 +171,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const user = await getCurrentUser();
   await logActivity(
     user,
     "IMPORT",

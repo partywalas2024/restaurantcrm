@@ -5,6 +5,7 @@ import { StatCard } from "@/components/StatCard";
 import { Card, EmptyState } from "@/components/Card";
 import { getAvailableBusinessMonths, getWasteForMonth } from "@/lib/sales";
 import { prisma } from "@/lib/prisma";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { recordWaste, deleteWaste } from "@/lib/sales-actions";
 
@@ -16,9 +17,13 @@ export default async function WastePage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const months = await getAvailableBusinessMonths();
+  const user = await requireRestaurantUser();
+  const months = await getAvailableBusinessMonths(user.restaurantId);
   const month = params.month && months.includes(params.month) ? params.month : months[0] ?? new Date().toISOString().slice(0, 7);
-  const [waste, products] = await Promise.all([getWasteForMonth(month), prisma.product.findMany({ orderBy: { name: "asc" } })]);
+  const [waste, products] = await Promise.all([
+    getWasteForMonth(user.restaurantId, month),
+    prisma.product.findMany({ where: { restaurantId: user.restaurantId }, orderBy: { name: "asc" } }),
+  ]);
 
   return (
     <div>

@@ -1,15 +1,18 @@
 // Server actions for the revenue side — menu items, recipes, daily sales,
 // labor and waste.
 //
-// Like the purchase-side actions, every entry point re-checks the session:
-// server actions are reachable independently of the pages that render them.
+// Like the purchase-side actions, every entry point re-checks the session via
+// `requireRestaurantUser()` — server actions are reachable independently of
+// the pages that render them, and this is also the tenant boundary: every
+// mutation is scoped to the caller's own restaurant, and every update/delete
+// re-verifies the target row belongs to it first.
 
 "use server";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireRestaurantUser } from "@/lib/auth";
 import type { LaborCategory } from "@/generated/prisma/enums";
 
 function revalidateSalesPages() {
@@ -21,24 +24,27 @@ function revalidateSalesPages() {
 }
 
 export async function createMenuItem(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Menu item name is required.");
   const category = (formData.get("category") as string | null) || null;
   const sellingPrice = Number(formData.get("sellingPrice") ?? 0);
 
-  const item = await prisma.menuItem.create({ data: { name, category, sellingPrice } });
+  const item = await prisma.menuItem.create({ data: { restaurantId: user.restaurantId, name, category, sellingPrice } });
   revalidateSalesPages();
   redirect(`/menu/${item.id}`);
 }
 
 export async function updateMenuItem(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   const category = (formData.get("category") as string | null) || null;
   const sellingPrice = Number(formData.get("sellingPrice") ?? 0);
   const active = formData.get("active") === "on";
+
+  const existing = await prisma.menuItem.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Menu item not found.");
 
   await prisma.menuItem.update({ where: { id }, data: { name, category, sellingPrice, active } });
   revalidateSalesPages();
@@ -46,15 +52,17 @@ export async function updateMenuItem(formData: FormData) {
 }
 
 export async function deleteMenuItem(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
+  const existing = await prisma.menuItem.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Menu item not found.");
   await prisma.menuItem.delete({ where: { id } });
   revalidateSalesPages();
   redirect("/menu");
 }
 
 export async function addRecipeIngredient(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const menuItemId = String(formData.get("menuItemId"));
   const productId = String(formData.get("productId"));
   const quantity = Number(formData.get("quantity"));
@@ -63,6 +71,11 @@ export async function addRecipeIngredient(formData: FormData) {
   if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
     throw new Error("Pick an ingredient and enter a positive quantity.");
   }
+  const [menuItem, product] = await Promise.all([
+    prisma.menuItem.findFirst({ where: { id: menuItemId, restaurantId: user.restaurantId } }),
+    prisma.product.findFirst({ where: { id: productId, restaurantId: user.restaurantId } }),
+  ]);
+  if (!menuItem || !product) throw new Error("Menu item or product not found.");
 
   await prisma.recipeIngredient.create({ data: { menuItemId, productId, quantity, unit } });
   revalidatePath(`/menu/${menuItemId}`);
@@ -70,9 +83,11 @@ export async function addRecipeIngredient(formData: FormData) {
 }
 
 export async function removeRecipeIngredient(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
   const menuItemId = String(formData.get("menuItemId"));
+  const existing = await prisma.recipeIngredient.findFirst({ where: { id, menuItem: { restaurantId: user.restaurantId } } });
+  if (!existing) throw new Error("Recipe ingredient not found.");
   await prisma.recipeIngredient.delete({ where: { id } });
   revalidatePath(`/menu/${menuItemId}`);
   revalidateSalesPages();
@@ -80,7 +95,7 @@ export async function removeRecipeIngredient(formData: FormData) {
 
 /** Creates or updates the single DailySales row for a date, plus any per-item quantities sold that day. */
 export async function saveDailySales(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const dateStr = String(formData.get("date"));
   const date = new Date(dateStr);
 
@@ -96,7 +111,7 @@ export async function saveDailySales(formData: FormData) {
   const notes = (formData.get("notes") as string | null) || null;
 
   const dailySales = await prisma.dailySales.upsert({
-    where: { date },
+    where: { restaurantId_date: { restaurantId: user.restaurantId, date } },
     update: {
       dineInRevenue,
       deliveryRevenue,
@@ -111,6 +126,7 @@ export async function saveDailySales(formData: FormData) {
       source: "MANUAL",
     },
     create: {
+      restaurantId: user.restaurantId,
       date,
       dineInRevenue,
       deliveryRevenue,
@@ -127,7 +143,7 @@ export async function saveDailySales(formData: FormData) {
   });
 
   // Item-wise quantities come in as qty_<menuItemId> fields; only non-empty, positive entries are saved.
-  const menuItems = await prisma.menuItem.findMany({ select: { id: true, sellingPrice: true } });
+  const menuItems = await prisma.menuItem.findMany({ where: { restaurantId: user.restaurantId }, select: { id: true, sellingPrice: true } });
   const priceById = new Map(menuItems.map((m) => [m.id, m.sellingPrice]));
 
   await prisma.menuItemSale.deleteMany({ where: { dailySalesId: dailySales.id } });
@@ -135,6 +151,7 @@ export async function saveDailySales(formData: FormData) {
   for (const [key, value] of formData.entries()) {
     if (!key.startsWith("qty_")) continue;
     const menuItemId = key.slice(4);
+    if (!priceById.has(menuItemId)) continue; // not one of this restaurant's own menu items
     const qty = Number(value);
     if (!Number.isFinite(qty) || qty <= 0) continue;
     const price = priceById.get(menuItemId) ?? 0;
@@ -149,14 +166,16 @@ export async function saveDailySales(formData: FormData) {
 }
 
 export async function deleteDailySales(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
+  const existing = await prisma.dailySales.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Sales record not found.");
   await prisma.dailySales.delete({ where: { id } });
   revalidateSalesPages();
 }
 
 export async function recordLaborCost(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const date = new Date(String(formData.get("date")));
   const category = formData.get("category") as LaborCategory;
   const amount = Number(formData.get("amount"));
@@ -164,21 +183,23 @@ export async function recordLaborCost(formData: FormData) {
 
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Amount must be a positive number.");
 
-  await prisma.laborCost.create({ data: { date, category, amount, notes } });
+  await prisma.laborCost.create({ data: { restaurantId: user.restaurantId, date, category, amount, notes } });
   revalidatePath("/labor");
   revalidateSalesPages();
 }
 
 export async function deleteLaborCost(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
+  const existing = await prisma.laborCost.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Labor cost entry not found.");
   await prisma.laborCost.delete({ where: { id } });
   revalidatePath("/labor");
   revalidateSalesPages();
 }
 
 export async function recordWaste(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const date = new Date(String(formData.get("date")));
   const productId = String(formData.get("productId"));
   const quantity = Number(formData.get("quantity"));
@@ -190,21 +211,25 @@ export async function recordWaste(formData: FormData) {
     throw new Error("Pick a product and enter a positive quantity.");
   }
 
+  const product = await prisma.product.findFirst({ where: { id: productId, restaurantId: user.restaurantId } });
+  if (!product) throw new Error("Product not found.");
+
   // Default to quantity x last purchase cost — override only if the user typed a value.
   let estimatedCost = manualCost ? Number(manualCost) : 0;
   if (!estimatedCost) {
-    const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
     estimatedCost = quantity * product.lastCostPrice;
   }
 
-  await prisma.wasteEntry.create({ data: { date, productId, quantity, estimatedCost, reason, notes } });
+  await prisma.wasteEntry.create({ data: { restaurantId: user.restaurantId, date, productId, quantity, estimatedCost, reason, notes } });
   revalidatePath("/waste");
   revalidateSalesPages();
 }
 
 export async function deleteWaste(formData: FormData) {
-  await requireUser();
+  const user = await requireRestaurantUser();
   const id = String(formData.get("id"));
+  const existing = await prisma.wasteEntry.findFirst({ where: { id, restaurantId: user.restaurantId } });
+  if (!existing) throw new Error("Waste entry not found.");
   await prisma.wasteEntry.delete({ where: { id } });
   revalidatePath("/waste");
   revalidateSalesPages();

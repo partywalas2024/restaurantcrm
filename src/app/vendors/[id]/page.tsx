@@ -7,7 +7,8 @@ import { StatCard } from "@/components/StatCard";
 import { LedgerExportButtons } from "@/components/LedgerExportButtons";
 import { ReceiptButton } from "@/components/ReceiptButton";
 import { getVendorLedger } from "@/lib/data";
-import { getRestaurantProfile } from "@/lib/settings";
+import { getRestaurant } from "@/lib/settings";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments";
 import { recordPayment, deletePayment } from "@/lib/actions";
@@ -16,7 +17,8 @@ export const dynamic = "force-dynamic";
 
 export default async function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [ledger, profile] = await Promise.all([getVendorLedger(id).catch(() => null), getRestaurantProfile()]);
+  const user = await requireRestaurantUser();
+  const [ledger, profile] = await Promise.all([getVendorLedger(user.restaurantId, id), getRestaurant(user.restaurantId)]);
   if (!ledger) notFound();
   const { vendor, entries, totalDebit, totalCredit, balance } = ledger;
 

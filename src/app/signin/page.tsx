@@ -1,13 +1,13 @@
 import { Suspense } from "react";
 import { UtensilsCrossed } from "lucide-react";
 import { SignInForm } from "@/components/SignInForm";
-import { getRestaurantProfile } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
-export default async function SignInPage() {
-  const profile = await getRestaurantProfile();
-
+// Branding here is the platform, not a restaurant — the account signing in
+// could belong to any restaurant on Partywalas, or be the platform admin
+// itself, so there is no single restaurant name to show before login.
+export default function SignInPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
@@ -15,8 +15,8 @@ export default async function SignInPage() {
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-white">
             <UtensilsCrossed size={24} />
           </span>
-          <h1 className="text-xl font-semibold">{profile.name}</h1>
-          <p className="mt-1 text-sm text-muted">Sign in to the restaurant CRM</p>
+          <h1 className="text-xl font-semibold">Partywalas</h1>
+          <p className="mt-1 text-sm text-muted">Sign in to your restaurant CRM</p>
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">

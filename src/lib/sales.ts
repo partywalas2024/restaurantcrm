@@ -6,6 +6,9 @@
 // Because recipes are optional, `getProfitAndLoss` reports food-cost % only
 // over the portion of revenue whose items have recipes, and tells the caller
 // how complete that coverage is instead of quietly understating cost.
+//
+// Every function takes `restaurantId` first and every query filters on it —
+// see the note at the top of data.ts for why that's the tenant boundary.
 
 import { prisma } from "@/lib/prisma";
 import { monthKey } from "@/lib/format";
@@ -18,17 +21,17 @@ function monthRange(month: string) {
   return { start, end };
 }
 
-export async function getAvailableSalesMonths(): Promise<string[]> {
-  const rows = await prisma.dailySales.findMany({ select: { date: true } });
+export async function getAvailableSalesMonths(restaurantId: string): Promise<string[]> {
+  const rows = await prisma.dailySales.findMany({ where: { restaurantId }, select: { date: true } });
   const set = new Set(rows.map((r) => monthKey(r.date)));
   return Array.from(set).sort().reverse();
 }
 
 /** Union of months that have either sales or purchase data — used by pages (like P&L) that need both. */
-export async function getAvailableBusinessMonths(): Promise<string[]> {
+export async function getAvailableBusinessMonths(restaurantId: string): Promise<string[]> {
   const [bills, sales] = await Promise.all([
-    prisma.bill.findMany({ select: { date: true } }),
-    prisma.dailySales.findMany({ select: { date: true } }),
+    prisma.bill.findMany({ where: { restaurantId }, select: { date: true } }),
+    prisma.dailySales.findMany({ where: { restaurantId }, select: { date: true } }),
   ]);
   const set = new Set([...bills.map((b) => monthKey(b.date)), ...sales.map((s) => monthKey(s.date))]);
   return Array.from(set).sort().reverse();
@@ -41,8 +44,9 @@ export function computeRecipeCost(
   return recipe.reduce((s, r) => s + r.quantity * r.product.lastCostPrice, 0);
 }
 
-export async function getMenuItems() {
+export async function getMenuItems(restaurantId: string) {
   const items = await prisma.menuItem.findMany({
+    where: { restaurantId },
     include: { recipe: { include: { product: true } } },
     orderBy: { name: "asc" },
   });
@@ -64,14 +68,14 @@ export async function getMenuItems() {
   });
 }
 
-export async function getMenuItemById(id: string) {
-  return prisma.menuItem.findUnique({
-    where: { id },
+export async function getMenuItemById(restaurantId: string, id: string) {
+  return prisma.menuItem.findFirst({
+    where: { id, restaurantId },
     include: { recipe: { include: { product: true } } },
   });
 }
 
-export async function getSalesForMonth(month: string) {
+export async function getSalesForMonth(restaurantId: string, month: string) {
   const { start, end } = monthRange(month);
   const prevMonth = (() => {
     const [y, m] = month.split("-").map(Number);
@@ -80,8 +84,8 @@ export async function getSalesForMonth(month: string) {
   const { start: prevStart, end: prevEnd } = monthRange(prevMonth);
 
   const [rows, prevRows] = await Promise.all([
-    prisma.dailySales.findMany({ where: { date: { gte: start, lt: end } }, orderBy: { date: "asc" } }),
-    prisma.dailySales.findMany({ where: { date: { gte: prevStart, lt: prevEnd } } }),
+    prisma.dailySales.findMany({ where: { restaurantId, date: { gte: start, lt: end } }, orderBy: { date: "asc" } }),
+    prisma.dailySales.findMany({ where: { restaurantId, date: { gte: prevStart, lt: prevEnd } } }),
   ]);
 
   const revenueOf = (r: { dineInRevenue: number; deliveryRevenue: number; takeawayRevenue: number; otherRevenue: number }) =>
@@ -121,8 +125,9 @@ export async function getSalesForMonth(month: string) {
 }
 
 /** Monthly revenue across all recorded sales — the revenue-side counterpart to getMonthlyTrend(). */
-export async function getRevenueTrend() {
+export async function getRevenueTrend(restaurantId: string) {
   const rows = await prisma.dailySales.findMany({
+    where: { restaurantId },
     select: { date: true, dineInRevenue: true, deliveryRevenue: true, takeawayRevenue: true, otherRevenue: true },
   });
   const map = new Map<string, number>();
@@ -136,10 +141,10 @@ export async function getRevenueTrend() {
     .map(([month, amount]) => ({ month, amount }));
 }
 
-export async function getMenuItemPerformance(month?: string) {
+export async function getMenuItemPerformance(restaurantId: string, month?: string) {
   const where = month
-    ? { dailySales: { date: { gte: monthRange(month).start, lt: monthRange(month).end } } }
-    : {};
+    ? { dailySales: { restaurantId, date: { gte: monthRange(month).start, lt: monthRange(month).end } } }
+    : { dailySales: { restaurantId } };
 
   const sales = await prisma.menuItemSale.findMany({
     where,
@@ -180,19 +185,19 @@ export async function getMenuItemPerformance(month?: string) {
     .sort((a, b) => b.revenue - a.revenue);
 }
 
-export async function getLaborCostForMonth(month: string) {
+export async function getLaborCostForMonth(restaurantId: string, month: string) {
   const { start, end } = monthRange(month);
-  const rows = await prisma.laborCost.findMany({ where: { date: { gte: start, lt: end } } });
+  const rows = await prisma.laborCost.findMany({ where: { restaurantId, date: { gte: start, lt: end } } });
   const total = rows.reduce((s, r) => s + r.amount, 0);
   const byCategory = new Map<string, number>();
   for (const r of rows) byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + r.amount);
   return { total, byCategory: Array.from(byCategory.entries()).map(([category, amount]) => ({ category, amount })), rows };
 }
 
-export async function getWasteForMonth(month: string) {
+export async function getWasteForMonth(restaurantId: string, month: string) {
   const { start, end } = monthRange(month);
   const rows = await prisma.wasteEntry.findMany({
-    where: { date: { gte: start, lt: end } },
+    where: { restaurantId, date: { gte: start, lt: end } },
     include: { product: true },
     orderBy: { date: "desc" },
   });
@@ -201,8 +206,9 @@ export async function getWasteForMonth(month: string) {
 }
 
 /** Revenue by day-of-week across every recorded day — answers "which day does best". */
-export async function getDayOfWeekPattern() {
+export async function getDayOfWeekPattern(restaurantId: string) {
   const rows = await prisma.dailySales.findMany({
+    where: { restaurantId },
     select: { date: true, dineInRevenue: true, deliveryRevenue: true, takeawayRevenue: true, otherRevenue: true, covers: true },
   });
   const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -250,20 +256,20 @@ export function projectNextValue(
   return { nextMonth, projected, basedOnMonths: n };
 }
 
-export async function getProfitAndLoss(month: string) {
+export async function getProfitAndLoss(restaurantId: string, month: string) {
   const { start, end } = monthRange(month);
   const [sales, menuPerf, labor, otherOpexLines, waste] = await Promise.all([
-    getSalesForMonth(month),
-    getMenuItemPerformance(month),
-    getLaborCostForMonth(month),
+    getSalesForMonth(restaurantId, month),
+    getMenuItemPerformance(restaurantId, month),
+    getLaborCostForMonth(restaurantId, month),
     prisma.billLineItem.findMany({
       where: {
-        bill: { date: { gte: start, lt: end }, type: "INVOICE" },
+        bill: { restaurantId, date: { gte: start, lt: end }, type: "INVOICE" },
         product: { category: { in: NON_FOOD_CATEGORIES } },
       },
       select: { amount: true },
     }),
-    getWasteForMonth(month),
+    getWasteForMonth(restaurantId, month),
   ]);
 
   const revenue = sales.totalRevenue;

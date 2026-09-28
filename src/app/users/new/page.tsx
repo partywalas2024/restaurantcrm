@@ -3,12 +3,12 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { NewUserForm } from "@/components/UserForms";
-import { requireAdmin } from "@/lib/auth";
+import { requireRestaurantAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewUserPage() {
-  await requireAdmin();
+  await requireRestaurantAdmin();
 
   return (
     <div>

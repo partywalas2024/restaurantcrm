@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
-import { getRestaurantProfile } from "@/lib/settings";
 import { getCurrentUser } from "@/lib/auth";
 
 const geistSans = Geist({
@@ -16,10 +15,13 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const profile = await getRestaurantProfile();
+  const user = await getCurrentUser();
+  const name = user?.restaurantName ?? "Partywalas";
   return {
-    title: `${profile.name} — Restaurant CRM`,
-    description: `Purchases, expenses, inventory and vendor dashboard for ${profile.name}`,
+    title: `${name} — Partywalas CRM`,
+    description: user?.restaurantName
+      ? `Purchases, expenses, inventory and vendor dashboard for ${user.restaurantName}`
+      : "Multi-restaurant CRM platform",
   };
 }
 
@@ -28,10 +30,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [profile, user] = await Promise.all([
-    getRestaurantProfile(),
-    getCurrentUser(),
-  ]);
+  const user = await getCurrentUser();
 
   return (
     <html
@@ -42,7 +41,7 @@ export default async function RootLayout({
         {/* Signed out, the only reachable page is /signin — render it bare. */}
         {user ? (
           <div className="flex min-h-screen flex-col lg:flex-row">
-            <Sidebar restaurantName={profile.name} user={user} />
+            <Sidebar user={user} />
             <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
               {children}
             </main>

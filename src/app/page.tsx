@@ -26,7 +26,8 @@ import { PdfReportButton } from "@/components/PdfReportButton";
 import { ExportButton } from "@/components/ExportButton";
 import { getOverview, getMonthlyTrend, getInsights } from "@/lib/data";
 import { getAvailableBusinessMonths, getSalesForMonth, getProfitAndLoss } from "@/lib/sales";
-import { getRestaurantProfile } from "@/lib/settings";
+import { getRestaurant } from "@/lib/settings";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR, formatMonth, formatNumber, pctChange } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 
@@ -38,7 +39,9 @@ export default async function OverviewPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const [months, profile] = await Promise.all([getAvailableBusinessMonths(), getRestaurantProfile()]);
+  const user = await requireRestaurantUser();
+  const restaurantId = user.restaurantId;
+  const [months, profile] = await Promise.all([getAvailableBusinessMonths(restaurantId), getRestaurant(restaurantId)]);
 
   if (months.length === 0) {
     return (
@@ -54,11 +57,11 @@ export default async function OverviewPage({
 
   const month = params.month && months.includes(params.month) ? params.month : months[0];
   const [overview, trend, insights, sales, pl] = await Promise.all([
-    getOverview(month),
-    getMonthlyTrend(),
-    getInsights(month),
-    getSalesForMonth(month),
-    getProfitAndLoss(month),
+    getOverview(restaurantId, month),
+    getMonthlyTrend(restaurantId),
+    getInsights(restaurantId, month),
+    getSalesForMonth(restaurantId, month),
+    getProfitAndLoss(restaurantId, month),
   ]);
 
   const change = pctChange(overview.totalSpend, overview.prevSpend);

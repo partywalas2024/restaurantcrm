@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { getMenuItemById, computeRecipeCost } from "@/lib/sales";
 import { prisma } from "@/lib/prisma";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatINR } from "@/lib/format";
 import { updateMenuItem, deleteMenuItem, addRecipeIngredient, removeRecipeIngredient } from "@/lib/sales-actions";
 
@@ -12,7 +13,11 @@ export const dynamic = "force-dynamic";
 
 export default async function MenuItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [item, products] = await Promise.all([getMenuItemById(id), prisma.product.findMany({ orderBy: { name: "asc" } })]);
+  const user = await requireRestaurantUser();
+  const [item, products] = await Promise.all([
+    getMenuItemById(user.restaurantId, id),
+    prisma.product.findMany({ where: { restaurantId: user.restaurantId }, orderBy: { name: "asc" } }),
+  ]);
   if (!item) notFound();
 
   const cost = computeRecipeCost(item.recipe);

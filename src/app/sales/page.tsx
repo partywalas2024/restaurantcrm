@@ -6,6 +6,7 @@ import { StatCard } from "@/components/StatCard";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { getAvailableSalesMonths, getSalesForMonth } from "@/lib/sales";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR, formatNumber, pctChange } from "@/lib/format";
 import { deleteDailySales } from "@/lib/sales-actions";
 
@@ -17,7 +18,8 @@ export default async function SalesPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const months = await getAvailableSalesMonths();
+  const user = await requireRestaurantUser();
+  const months = await getAvailableSalesMonths(user.restaurantId);
 
   const actions = (
     <>
@@ -43,7 +45,7 @@ export default async function SalesPage({
   }
 
   const month = params.month && months.includes(params.month) ? params.month : months[0];
-  const sales = await getSalesForMonth(month);
+  const sales = await getSalesForMonth(user.restaurantId, month);
   const change = pctChange(sales.totalRevenue, sales.prevRevenue);
 
   return (

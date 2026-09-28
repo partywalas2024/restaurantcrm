@@ -4,6 +4,7 @@ import { MonthSelect } from "@/components/MonthSelect";
 import { StatCard } from "@/components/StatCard";
 import { Card, EmptyState } from "@/components/Card";
 import { getAvailableBusinessMonths, getLaborCostForMonth } from "@/lib/sales";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { recordLaborCost, deleteLaborCost } from "@/lib/sales-actions";
 
@@ -22,9 +23,10 @@ export default async function LaborPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const months = await getAvailableBusinessMonths();
+  const user = await requireRestaurantUser();
+  const months = await getAvailableBusinessMonths(user.restaurantId);
   const month = params.month && months.includes(params.month) ? params.month : months[0] ?? new Date().toISOString().slice(0, 7);
-  const labor = await getLaborCostForMonth(month);
+  const labor = await getLaborCostForMonth(user.restaurantId, month);
 
   return (
     <div>

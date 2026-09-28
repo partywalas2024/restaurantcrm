@@ -6,6 +6,7 @@ import { StatCard } from "@/components/StatCard";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { getAvailableBusinessMonths, getProfitAndLoss, getMenuItemPerformance } from "@/lib/sales";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatINR, formatMonth, formatNumber } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,8 @@ export default async function ProfitabilityPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const months = await getAvailableBusinessMonths();
+  const user = await requireRestaurantUser();
+  const months = await getAvailableBusinessMonths(user.restaurantId);
 
   if (months.length === 0) {
     return (
@@ -28,7 +30,7 @@ export default async function ProfitabilityPage({
   }
 
   const month = params.month && months.includes(params.month) ? params.month : months[0];
-  const [pl, menuPerf] = await Promise.all([getProfitAndLoss(month), getMenuItemPerformance(month)]);
+  const [pl, menuPerf] = await Promise.all([getProfitAndLoss(user.restaurantId, month), getMenuItemPerformance(user.restaurantId, month)]);
 
   const topSellers = [...menuPerf].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
   const worstMargin = [...menuPerf].filter((m) => m.hasRecipe).sort((a, b) => (a.marginPct ?? 0) - (b.marginPct ?? 0)).slice(0, 5);

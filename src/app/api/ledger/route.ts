@@ -3,16 +3,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getVendorLedger } from "@/lib/data";
 import { formatDate } from "@/lib/format";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   const vendorId = req.nextUrl.searchParams.get("vendorId");
   if (!vendorId) return NextResponse.json({ error: "vendorId is required." }, { status: 400 });
 
-  const ledger = await getVendorLedger(vendorId).catch(() => null);
+  const ledger = await getVendorLedger(user.restaurantId, vendorId).catch(() => null);
   if (!ledger) return NextResponse.json({ error: "Vendor not found." }, { status: 404 });
   const { vendor, entries, totalDebit, totalCredit, balance } = ledger;
 

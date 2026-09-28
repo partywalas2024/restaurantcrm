@@ -5,6 +5,7 @@ import { Badge } from "@/components/Badge";
 import { ExportButton } from "@/components/ExportButton";
 import { StockAdjustForm } from "@/components/StockAdjustForm";
 import { getProducts, StockStatus } from "@/lib/data";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR, formatNumber } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { Boxes, AlertTriangle, XCircle, PackagePlus } from "lucide-react";
@@ -31,7 +32,8 @@ export default async function InventoryPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  const products = await getProducts();
+  const user = await requireRestaurantUser();
+  const products = await getProducts(user.restaurantId);
 
   const filtered = products.filter((p) => {
     if (sp.category && p.category !== sp.category) return false;

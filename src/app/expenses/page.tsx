@@ -6,6 +6,7 @@ import { CategoryDonut } from "@/components/charts/CategoryDonut";
 import { BarList } from "@/components/charts/BarList";
 import { ExportButton } from "@/components/ExportButton";
 import { getAvailableMonths, getOverview } from "@/lib/data";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatINR, formatMonth, pctChange } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { Wallet, TrendingDown, TrendingUp, Layers } from "lucide-react";
@@ -18,7 +19,8 @@ export default async function ExpensesPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const months = await getAvailableMonths();
+  const user = await requireRestaurantUser();
+  const months = await getAvailableMonths(user.restaurantId);
   if (months.length === 0) {
     return (
       <div>
@@ -29,7 +31,7 @@ export default async function ExpensesPage({
   }
 
   const month = params.month && months.includes(params.month) ? params.month : months[0];
-  const overview = await getOverview(month);
+  const overview = await getOverview(user.restaurantId, month);
   const change = pctChange(overview.totalSpend, overview.prevSpend);
 
   const sortedCategories = [...overview.categorySpend].sort((a, b) => b.amount - a.amount);

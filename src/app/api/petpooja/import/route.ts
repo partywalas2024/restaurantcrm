@@ -6,7 +6,7 @@
 // freshly-exported report is the more authoritative figure for that day.
 
 import { NextRequest, NextResponse } from "next/server";
-import { apiAuthGuard, getCurrentUser } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 
@@ -28,8 +28,9 @@ function isFiniteNumber(v: unknown): v is number {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   let body: { days: ImportDay[] };
   try {
@@ -58,7 +59,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const user = await getCurrentUser();
   let daysImported = 0;
   for (const d of body.days) {
     const date = new Date(d.date);
@@ -75,9 +75,9 @@ export async function POST(req: NextRequest) {
       source: "PETPOOJA_REPORTS",
     };
     await prisma.dailySales.upsert({
-      where: { date },
+      where: { restaurantId_date: { restaurantId: user.restaurantId, date } },
       update: data,
-      create: { date, ...data },
+      create: { restaurantId: user.restaurantId, date, ...data },
     });
     daysImported++;
   }

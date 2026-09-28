@@ -1,65 +1,45 @@
-// Creates the initial sign-ins. Safe to re-run: existing usernames are left
-// alone, so it never overwrites a password someone has since changed.
+// Creates the initial Partywalas platform admin (SUPER_ADMIN). Safe to re-run:
+// if the account already exists it's left alone, so it never overwrites a
+// password someone has since changed.
 //
 //   npm run seed:users
 //
-// Set ADMIN_PASSWORD / JUNCTION14_PASSWORD to choose the passwords, otherwise
-// strong ones are generated and printed once.
+// Set ADMIN_PASSWORD to choose the password, otherwise a strong one is
+// generated and printed once.
+//
+// Restaurant accounts (RESTAURANT_ADMIN) are created from the platform admin's
+// /platform page, which creates the Restaurant and its first admin together —
+// not from this script.
 
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { generatePassword, hashPassword } from "../src/lib/password";
 
-const SEED_USERS = [
-  {
-    username: "admin",
-    name: "Administrator",
-    email: "gauravfeel@gmail.com",
-    role: "ADMIN" as const,
-    envVar: "ADMIN_PASSWORD",
-  },
-  {
-    username: "junction14",
-    name: "Junction 14",
-    email: null,
-    role: "USER" as const,
-    envVar: "JUNCTION14_PASSWORD",
-  },
-];
-
 async function main() {
-  const created: { username: string; password: string; role: string }[] = [];
-
-  for (const seed of SEED_USERS) {
-    const existing = await prisma.user.findUnique({ where: { username: seed.username } });
-    if (existing) {
-      console.log(`• @${seed.username} already exists — left unchanged.`);
-      continue;
-    }
-
-    const password = process.env[seed.envVar] || generatePassword();
-    await prisma.user.create({
-      data: {
-        username: seed.username,
-        name: seed.name,
-        email: seed.email,
-        role: seed.role,
-        passwordHash: await hashPassword(password),
-      },
-    });
-    created.push({ username: seed.username, password, role: seed.role });
+  const existing = await prisma.user.findUnique({ where: { username: "admin" } });
+  if (existing) {
+    console.log("• @admin already exists — left unchanged.");
+    await prisma.$disconnect();
+    return;
   }
 
-  if (created.length > 0) {
-    console.log("\n─────────── SIGN-IN CREDENTIALS ───────────");
-    console.log("Shown once. Store them in a password manager, then");
-    console.log("change them from Settings after the first sign-in.\n");
-    for (const u of created) {
-      console.log(`  ${u.role.padEnd(5)}  username: ${u.username}`);
-      console.log(`         password: ${u.password}\n`);
-    }
-    console.log("───────────────────────────────────────────");
-  }
+  const password = process.env.ADMIN_PASSWORD || generatePassword();
+  await prisma.user.create({
+    data: {
+      username: "admin",
+      name: "Administrator",
+      email: "gauravfeel@gmail.com",
+      role: "SUPER_ADMIN",
+      passwordHash: await hashPassword(password),
+    },
+  });
+
+  console.log("\n─────────── SIGN-IN CREDENTIALS ───────────");
+  console.log("Shown once. Store it in a password manager, then");
+  console.log("change it from Settings after the first sign-in.\n");
+  console.log("  SUPER_ADMIN  username: admin");
+  console.log(`               password: ${password}\n`);
+  console.log("───────────────────────────────────────────");
 
   await prisma.$disconnect();
 }

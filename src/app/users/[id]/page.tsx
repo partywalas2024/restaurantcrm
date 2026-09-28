@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { EditUserForm, ResetPasswordForm } from "@/components/UserForms";
-import { requireAdmin } from "@/lib/auth";
+import { requireRestaurantAdmin } from "@/lib/auth";
 import { deleteUserAction } from "@/lib/auth-actions";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
@@ -17,11 +17,11 @@ export default async function ManageUserPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const admin = await requireAdmin();
+  const admin = await requireRestaurantAdmin();
   const { id } = await params;
 
-  const user = await prisma.user.findUnique({
-    where: { id },
+  const user = await prisma.user.findFirst({
+    where: { id, restaurantId: admin.restaurantId },
     select: {
       id: true,
       username: true,
@@ -49,8 +49,8 @@ export default async function ManageUserPage({
         }`}
         actions={
           <>
-            <Badge tone={user.role === "ADMIN" ? "info" : "neutral"}>
-              {user.role === "ADMIN" ? "Admin" : "User"}
+            <Badge tone={user.role === "RESTAURANT_ADMIN" ? "info" : "neutral"}>
+              {user.role === "RESTAURANT_ADMIN" ? "Admin" : "User"}
             </Badge>
             <Badge tone={user.isActive ? "ok" : "crit"}>{user.isActive ? "Active" : "Disabled"}</Badge>
           </>

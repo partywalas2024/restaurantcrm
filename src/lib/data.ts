@@ -5,6 +5,11 @@
 // spending are all derived here rather than stored, so purchase data is only
 // ever entered once. Every function is a plain server-side read — callers are
 // React Server Components, which is why nothing here is memoized or cached.
+//
+// Every function takes `restaurantId` as its first argument and every query
+// filters on it. This is the tenant boundary: a caller without a restaurantId
+// (a SUPER_ADMIN) cannot call these functions meaningfully at all, since
+// `requireRestaurantUser()` is what supplies the id in the first place.
 
 import { prisma } from "@/lib/prisma";
 import { monthKey, formatINR } from "@/lib/format";
@@ -22,8 +27,8 @@ export function stockStatus(currentStock: number, reorderLevel: number): StockSt
 }
 
 /** All months (YYYY-MM) that have at least one bill, newest first. */
-export async function getAvailableMonths(): Promise<string[]> {
-  const bills = await prisma.bill.findMany({ select: { date: true } });
+export async function getAvailableMonths(restaurantId: string): Promise<string[]> {
+  const bills = await prisma.bill.findMany({ where: { restaurantId }, select: { date: true } });
   const set = new Set(bills.map((b) => monthKey(b.date)));
   return Array.from(set).sort().reverse();
 }
@@ -40,8 +45,9 @@ function monthRange(month: string) {
  * RETURN bills and Payments reduce it. This is the single source of truth
  * for "pending"/"payable" anywhere in the app — never a hand-typed number.
  */
-export async function getAccountsPayable() {
+export async function getAccountsPayable(restaurantId: string) {
   const vendors = await prisma.vendor.findMany({
+    where: { restaurantId },
     include: { bills: { select: { type: true, grandTotal: true } }, payments: { select: { amount: true } } },
   });
 
@@ -72,10 +78,12 @@ export type LedgerEntry = {
   balance: number;
 };
 
-export async function getVendorLedger(vendorId: string) {
-  const [vendor, bills, payments] = await Promise.all([
-    prisma.vendor.findUniqueOrThrow({ where: { id: vendorId } }),
-    prisma.bill.findMany({ where: { vendorId }, orderBy: { date: "asc" } }),
+export async function getVendorLedger(restaurantId: string, vendorId: string) {
+  const vendor = await prisma.vendor.findFirst({ where: { id: vendorId, restaurantId } });
+  if (!vendor) return null;
+
+  const [bills, payments] = await Promise.all([
+    prisma.bill.findMany({ where: { vendorId, restaurantId }, orderBy: { date: "asc" } }),
     prisma.payment.findMany({ where: { vendorId }, orderBy: { date: "asc" } }),
   ]);
 
@@ -131,8 +139,11 @@ export async function getVendorLedger(vendorId: string) {
   return { vendor, entries, totalDebit, totalCredit, balance };
 }
 
-export async function getBalanceSheet() {
-  const [products, payable] = await Promise.all([prisma.product.findMany(), getAccountsPayable()]);
+export async function getBalanceSheet(restaurantId: string) {
+  const [products, payable] = await Promise.all([
+    prisma.product.findMany({ where: { restaurantId } }),
+    getAccountsPayable(restaurantId),
+  ]);
 
   const stockValue = products.reduce((s, p) => s + Math.max(p.currentStock, 0) * p.lastCostPrice, 0);
   const accountsPayable = payable.filter((v) => v.balance > 0.005);
@@ -150,7 +161,7 @@ export async function getBalanceSheet() {
   };
 }
 
-export async function getOverview(month: string) {
+export async function getOverview(restaurantId: string, month: string) {
   const { start, end } = monthRange(month);
   const prevMonth = (() => {
     const [y, m] = month.split("-").map(Number);
@@ -161,12 +172,12 @@ export async function getOverview(month: string) {
 
   const [bills, prevBills, products, vendors] = await Promise.all([
     prisma.bill.findMany({
-      where: { date: { gte: start, lt: end } },
+      where: { restaurantId, date: { gte: start, lt: end } },
       include: { vendor: true, lineItems: { include: { product: true } } },
     }),
-    prisma.bill.findMany({ where: { date: { gte: prevStart, lt: prevEnd } } }),
-    prisma.product.findMany(),
-    prisma.vendor.findMany(),
+    prisma.bill.findMany({ where: { restaurantId, date: { gte: prevStart, lt: prevEnd } } }),
+    prisma.product.findMany({ where: { restaurantId } }),
+    prisma.vendor.findMany({ where: { restaurantId } }),
   ]);
 
   const invoices = bills.filter((b) => b.type === "INVOICE");
@@ -212,7 +223,7 @@ export async function getOverview(month: string) {
   const lowStock = products.filter((p) => stockStatus(p.currentStock, p.reorderLevel) === "LOW_STOCK");
   const outOfStock = products.filter((p) => stockStatus(p.currentStock, p.reorderLevel) === "OUT_OF_STOCK");
   const stockValue = products.reduce((s, p) => s + Math.max(p.currentStock, 0) * p.lastCostPrice, 0);
-  const payable = await getAccountsPayable();
+  const payable = await getAccountsPayable(restaurantId);
   const pendingPayments = payable.reduce((s, v) => s + Math.max(v.balance, 0), 0);
 
   return {
@@ -236,7 +247,7 @@ export async function getOverview(month: string) {
   };
 }
 
-export async function getBills(filters?: {
+export async function getBills(restaurantId: string, filters?: {
   vendorId?: string;
   category?: ProductCategory;
   from?: string;
@@ -246,7 +257,7 @@ export async function getBills(filters?: {
   search?: string;
   paymentStatus?: string;
 }) {
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { restaurantId };
   if (filters?.vendorId) where.vendorId = filters.vendorId;
   if (filters?.category) where.category = filters.category;
   if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
@@ -276,22 +287,23 @@ export async function getBills(filters?: {
   });
 }
 
-export async function getBillById(id: string) {
-  return prisma.bill.findUnique({
-    where: { id },
+export async function getBillById(restaurantId: string, id: string) {
+  return prisma.bill.findFirst({
+    where: { id, restaurantId },
     include: { vendor: true, lineItems: { include: { product: true } } },
   });
 }
 
-export async function getVendors() {
+export async function getVendors(restaurantId: string) {
   const [vendors, payable] = await Promise.all([
     prisma.vendor.findMany({
+      where: { restaurantId },
       include: {
         bills: { include: { lineItems: true } },
         payments: true,
       },
     }),
-    getAccountsPayable(),
+    getAccountsPayable(restaurantId),
   ]);
   const payableByVendor = new Map(payable.map((p) => [p.vendorId, p.balance]));
 
@@ -324,8 +336,9 @@ export async function getVendors() {
     .sort((a, b) => b.totalAmount - a.totalAmount);
 }
 
-export async function getProducts() {
+export async function getProducts(restaurantId: string) {
   const products = await prisma.product.findMany({
+    where: { restaurantId },
     include: {
       vendor: true,
       lineItems: { include: { bill: true } },
@@ -360,8 +373,8 @@ export async function getProducts() {
   });
 }
 
-export async function getMonthlyTrend() {
-  const bills = await prisma.bill.findMany({ select: { date: true, grandTotal: true, type: true } });
+export async function getMonthlyTrend(restaurantId: string) {
+  const bills = await prisma.bill.findMany({ where: { restaurantId }, select: { date: true, grandTotal: true, type: true } });
   const map = new Map<string, number>();
   for (const b of bills) {
     const key = monthKey(b.date);
@@ -373,10 +386,10 @@ export async function getMonthlyTrend() {
     .map(([month, amount]) => ({ month, amount }));
 }
 
-export async function getDailyTrend(month: string) {
+export async function getDailyTrend(restaurantId: string, month: string) {
   const { start, end } = monthRange(month);
   const bills = await prisma.bill.findMany({
-    where: { date: { gte: start, lt: end } },
+    where: { restaurantId, date: { gte: start, lt: end } },
     select: { date: true, grandTotal: true, type: true },
   });
   const map = new Map<string, number>();
@@ -390,8 +403,8 @@ export async function getDailyTrend(month: string) {
     .map(([date, amount]) => ({ date, amount }));
 }
 
-export async function getInsights(month: string) {
-  const overview = await getOverview(month);
+export async function getInsights(restaurantId: string, month: string) {
+  const overview = await getOverview(restaurantId, month);
   const insights: string[] = [];
 
   if (overview.prevSpend > 0) {
@@ -403,7 +416,7 @@ export async function getInsights(month: string) {
     );
   }
 
-  const vendors = await getVendors();
+  const vendors = await getVendors(restaurantId);
   const totalAllVendors = vendors.reduce((s, v) => s + v.totalAmount, 0);
   if (vendors.length > 1 && totalAllVendors > 0) {
     let running = 0;

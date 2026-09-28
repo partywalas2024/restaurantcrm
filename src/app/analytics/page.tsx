@@ -7,6 +7,7 @@ import { BarList } from "@/components/charts/BarList";
 import { ExportButton } from "@/components/ExportButton";
 import { getAvailableMonths, getOverview, getDailyTrend, getVendors, getProducts, getMonthlyTrend } from "@/lib/data";
 import { getRevenueTrend, getMenuItemPerformance, getSalesForMonth, getDayOfWeekPattern, projectNextValue } from "@/lib/sales";
+import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR, formatMonth } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,8 @@ export default async function AnalyticsPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const months = await getAvailableMonths();
+  const user = await requireRestaurantUser();
+  const months = await getAvailableMonths(user.restaurantId);
   if (months.length === 0) {
     return (
       <div>
@@ -29,10 +31,10 @@ export default async function AnalyticsPage({
 
   const month = params.month && months.includes(params.month) ? params.month : months[0];
   const [overview, daily, vendors, products] = await Promise.all([
-    getOverview(month),
-    getDailyTrend(month),
-    getVendors(),
-    getProducts(),
+    getOverview(user.restaurantId, month),
+    getDailyTrend(user.restaurantId, month),
+    getVendors(user.restaurantId),
+    getProducts(user.restaurantId),
   ]);
 
   const dailyData = daily.map((d) => ({ label: formatDate(d.date), amount: d.amount }));
@@ -59,16 +61,16 @@ export default async function AnalyticsPage({
     .map((p) => ({ label: p.name, amount: p.currentStock }))
     .slice(0, 10);
 
-  const trendMonths = await getMonthlyTrend();
+  const trendMonths = await getMonthlyTrend(user.restaurantId);
   const idx = trendMonths.findIndex((t) => t.month === month);
   const monthComparison = idx >= 0 ? trendMonths.slice(Math.max(0, idx - 5), idx + 1) : trendMonths.slice(-6);
   const monthComparisonData = monthComparison.map((t) => ({ label: formatMonth(`${t.month}-01`), amount: t.amount }));
 
   // ---- Sales & menu side, so this page is a whole-business analysis view rather than purchases only ----
   const [revenueTrendAll, menuPerf, salesMonth] = await Promise.all([
-    getRevenueTrend(),
-    getMenuItemPerformance(month),
-    getSalesForMonth(month),
+    getRevenueTrend(user.restaurantId),
+    getMenuItemPerformance(user.restaurantId, month),
+    getSalesForMonth(user.restaurantId, month),
   ]);
   const revIdx = revenueTrendAll.findIndex((t) => t.month === month);
   const revenueComparison = revIdx >= 0 ? revenueTrendAll.slice(Math.max(0, revIdx - 5), revIdx + 1) : revenueTrendAll.slice(-6);
@@ -85,7 +87,7 @@ export default async function AnalyticsPage({
   ].filter((c) => c.amount > 0);
 
   // ---- Patterns & projection ----
-  const dayPattern = await getDayOfWeekPattern();
+  const dayPattern = await getDayOfWeekPattern(user.restaurantId);
   const dayPatternData = dayPattern.map((d) => ({ label: d.label.slice(0, 3), amount: Math.round(d.avgRevenue) }));
   const bestDay = [...dayPattern].filter((d) => d.days > 0).sort((a, b) => b.avgRevenue - a.avgRevenue)[0];
 

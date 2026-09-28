@@ -2,21 +2,22 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getRestaurantProfile } from "@/lib/settings";
+import { getRestaurant } from "@/lib/settings";
 import { formatDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments";
-import { apiAuthGuard } from "@/lib/auth";
+import { apiRestaurantGuard } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const denied = await apiAuthGuard();
-  if (denied) return denied;
+  const guard = await apiRestaurantGuard();
+  if ("denied" in guard) return guard.denied;
+  const { user } = guard;
 
   const paymentId = req.nextUrl.searchParams.get("paymentId");
   if (!paymentId) return NextResponse.json({ error: "paymentId is required." }, { status: 400 });
 
   const [payment, restaurant] = await Promise.all([
-    prisma.payment.findUnique({ where: { id: paymentId }, include: { vendor: true } }),
-    getRestaurantProfile(),
+    prisma.payment.findFirst({ where: { id: paymentId, vendor: { restaurantId: user.restaurantId } }, include: { vendor: true } }),
+    getRestaurant(user.restaurantId),
   ]);
   if (!payment) return NextResponse.json({ error: "Payment not found." }, { status: 404 });
 

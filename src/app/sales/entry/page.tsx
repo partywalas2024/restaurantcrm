@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { prisma } from "@/lib/prisma";
+import { requireRestaurantUser } from "@/lib/auth";
 import { saveDailySales } from "@/lib/sales-actions";
 
 export const dynamic = "force-dynamic";
@@ -13,11 +14,12 @@ export default async function SalesEntryPage({
   searchParams: Promise<{ date?: string }>;
 }) {
   const params = await searchParams;
+  const user = await requireRestaurantUser();
   const dateStr = params.date ?? new Date().toISOString().slice(0, 10);
 
   const [existing, menuItems] = await Promise.all([
-    prisma.dailySales.findUnique({ where: { date: new Date(dateStr) }, include: { items: true } }),
-    prisma.menuItem.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.dailySales.findFirst({ where: { restaurantId: user.restaurantId, date: new Date(dateStr) }, include: { items: true } }),
+    prisma.menuItem.findMany({ where: { restaurantId: user.restaurantId, active: true }, orderBy: { name: "asc" } }),
   ]);
 
   const qtyByItem = new Map((existing?.items ?? []).map((i) => [i.menuItemId, i.quantity]));

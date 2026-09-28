@@ -25,11 +25,12 @@ import {
   ShieldCheck,
   History,
   LogOut,
+  Building2,
 } from "lucide-react";
 import { signOutAction } from "@/lib/auth-actions";
 import type { CurrentUser } from "@/lib/auth";
 
-const SECTIONS = [
+const RESTAURANT_SECTIONS = [
   {
     label: "Sales & Growth",
     items: [
@@ -61,18 +62,30 @@ const SECTIONS = [
   },
 ];
 
+const PLATFORM_SECTIONS = [
+  {
+    label: "Partywalas Platform",
+    items: [
+      { href: "/platform", label: "Restaurants", icon: Building2 },
+    ],
+  },
+];
+
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-function NavLinks({ isAdmin, onNavigate }: { isAdmin: boolean; onNavigate?: () => void }) {
+function NavLinks({ role, onNavigate }: { role: CurrentUser["role"]; onNavigate?: () => void }) {
   const pathname = usePathname();
-  const sections = isAdmin
-    ? [...SECTIONS, { label: "Administration", items: [
-        { href: "/users", label: "Users & Access", icon: ShieldCheck },
-        { href: "/activity", label: "Activity Log", icon: History },
-      ] }]
-    : SECTIONS;
+  const isSuperAdmin = role === "SUPER_ADMIN";
+  const sections = isSuperAdmin
+    ? PLATFORM_SECTIONS
+    : role === "RESTAURANT_ADMIN"
+      ? [...RESTAURANT_SECTIONS, { label: "Administration", items: [
+          { href: "/users", label: "Users & Access", icon: ShieldCheck },
+          { href: "/activity", label: "Activity Log", icon: History },
+        ] }]
+      : RESTAURANT_SECTIONS;
   return (
     <nav className="flex flex-1 flex-col gap-4 px-3">
       {sections.map((section) => (
@@ -117,13 +130,20 @@ function NavLinks({ isAdmin, onNavigate }: { isAdmin: boolean; onNavigate?: () =
   );
 }
 
+const ROLE_LABEL: Record<CurrentUser["role"], string | null> = {
+  SUPER_ADMIN: "Partywalas Admin",
+  RESTAURANT_ADMIN: "Admin",
+  USER: null,
+};
+
 function UserFooter({ user }: { user: CurrentUser }) {
+  const roleLabel = ROLE_LABEL[user.role];
   return (
     <div className="mx-3 mt-4 rounded-lg bg-surface-muted px-3 py-3">
       <p className="truncate text-sm font-medium">{user.name}</p>
       <p className="truncate text-xs text-muted">
         @{user.username}
-        {user.role === "ADMIN" && " · Admin"}
+        {roleLabel && ` · ${roleLabel}`}
       </p>
       <form action={signOutAction}>
         <button
@@ -137,9 +157,10 @@ function UserFooter({ user }: { user: CurrentUser }) {
   );
 }
 
-export function Sidebar({ restaurantName, user }: { restaurantName: string; user: CurrentUser }) {
+export function Sidebar({ user }: { user: CurrentUser }) {
   const [open, setOpen] = useState(false);
-  const isAdmin = user.role === "ADMIN";
+  // A SUPER_ADMIN has no restaurant of their own — the platform itself is the brand.
+  const brandName = user.restaurantName ?? "Partywalas";
 
   return (
     <>
@@ -147,7 +168,7 @@ export function Sidebar({ restaurantName, user }: { restaurantName: string; user
       <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
         <div className="flex items-center gap-2 font-semibold">
           <UtensilsCrossed size={20} className="text-brand" />
-          <span>{restaurantName}</span>
+          <span>{brandName}</span>
         </div>
         <button
           onClick={() => setOpen(true)}
@@ -166,13 +187,13 @@ export function Sidebar({ restaurantName, user }: { restaurantName: string; user
             <div className="flex items-center justify-between px-4 pb-4">
               <div className="flex items-center gap-2 font-semibold">
                 <UtensilsCrossed size={20} className="text-brand" />
-                <span>{restaurantName}</span>
+                <span>{brandName}</span>
               </div>
               <button onClick={() => setOpen(false)} aria-label="Close menu" className="rounded-md p-2 hover:bg-surface-muted">
                 <X size={20} />
               </button>
             </div>
-            <NavLinks isAdmin={isAdmin} onNavigate={() => setOpen(false)} />
+            <NavLinks role={user.role} onNavigate={() => setOpen(false)} />
             <UserFooter user={user} />
           </div>
         </div>
@@ -182,9 +203,9 @@ export function Sidebar({ restaurantName, user }: { restaurantName: string; user
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-surface py-5 lg:flex">
         <div className="flex items-center gap-2 px-5 pb-6 font-semibold text-lg">
           <UtensilsCrossed size={22} className="text-brand" />
-          <span>{restaurantName}</span>
+          <span>{brandName}</span>
         </div>
-        <NavLinks isAdmin={isAdmin} />
+        <NavLinks role={user.role} />
         <UserFooter user={user} />
       </aside>
     </>

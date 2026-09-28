@@ -4,7 +4,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
-import { requireAdmin } from "@/lib/auth";
+import { requireRestaurantAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 
@@ -24,16 +24,17 @@ export default async function ActivityPage({
 }: {
   searchParams: Promise<{ entity?: string }>;
 }) {
-  await requireAdmin();
+  const admin = await requireRestaurantAdmin();
   const params = await searchParams;
 
   const [entries, entities] = await Promise.all([
     prisma.activityLog.findMany({
-      where: params.entity ? { entity: params.entity } : undefined,
+      where: { restaurantId: admin.restaurantId, ...(params.entity ? { entity: params.entity } : {}) },
       orderBy: { createdAt: "desc" },
       take: PAGE_SIZE,
     }),
     prisma.activityLog.findMany({
+      where: { restaurantId: admin.restaurantId },
       select: { entity: true },
       distinct: ["entity"],
       orderBy: { entity: "asc" },

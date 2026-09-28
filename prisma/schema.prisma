@@ -1,6 +1,16 @@
-// Restaurant Supply & Expense CRM — data model
-// Bills are the source of truth; Expenses/Inventory are derived views over
-// Bill + BillLineItem so purchase data never has to be entered twice.
+// Partywalas — multi-restaurant Supply & Expense CRM platform.
+//
+// Every restaurant (e.g. Junction 14) is a tenant: its own vendors, bills,
+// products, sales, menu, users — invisible to every other restaurant. A
+// Partywalas SUPER_ADMIN account sits above all restaurants and can create
+// them and grant access, but cannot read their business data — enforced in
+// the application layer (see requireRestaurantUser in src/lib/auth.ts), not
+// just by convention, since every restaurant-scoped query requires a
+// restaurantId that a SUPER_ADMIN session simply does not have.
+//
+// Bills remain the source of truth within a restaurant; Expenses/Inventory
+// are derived views over Bill + BillLineItem so purchase data never has to
+// be entered twice.
 
 generator client {
   provider = "prisma-client"
@@ -56,25 +66,64 @@ enum PaymentMethod {
   OTHER
 }
 
-model Vendor {
-  id                  String   @id @default(cuid())
-  name                String   @unique
-  phone               String?
-  address             String?
-  gstin               String?
-  notes               String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+// A tenant. Replaces the old singleton RestaurantProfile — there is now one
+// row per restaurant instead of exactly one row total, and every piece of
+// business data hangs off a specific restaurant's id.
+model Restaurant {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  gstin     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  bills               Bill[]
-  products            Product[]
-  payments            Payment[]
+  users        User[]
+  vendors      Vendor[]
+  bills        Bill[]
+  products     Product[]
+  menuItems    MenuItem[]
+  dailySales   DailySales[]
+  laborCosts   LaborCost[]
+  wasteEntries WasteEntry[]
+  activityLogs ActivityLog[]
+}
+
+model Vendor {
+  id           String   @id @default(cuid())
+  restaurantId String
+  name         String
+  phone        String?
+  address      String?
+  gstin        String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  bills      Bill[]
+  products   Product[]
+  payments   Payment[]
+
+  // Same vendor NAME can recur across different restaurants — they are
+  // different suppliers as far as each restaurant's books are concerned, or
+  // even the same real-world supplier with two independent ledgers. Only
+  // unique *within* a restaurant, which is what makes the case-insensitive
+  // dedup match correctly per-tenant instead of across tenants.
+  @@unique([restaurantId, name])
+  @@index([restaurantId])
 }
 
 // A payment made to a vendor. Combined with that vendor's Bills, this is the
 // ledger: INVOICE bills and RETURN bills are debits/credits on account, and
 // Payments are credits — the running balance is always derived, never
 // hand-typed, so it can't drift from reality.
+//
+// No restaurantId here: a Payment always belongs to a Vendor, and a Vendor
+// always belongs to exactly one Restaurant, so scoping queries through
+// `vendor: { restaurantId }` is both sufficient and avoids a column that
+// could drift out of sync with its parent.
 model Payment {
   id        String        @id @default(cuid())
   vendorId  String
@@ -85,88 +134,97 @@ model Payment {
   notes     String?
   createdAt DateTime      @default(now())
 
-  vendor    Vendor        @relation(fields: [vendorId], references: [id])
+  vendor Vendor @relation(fields: [vendorId], references: [id])
 
   @@index([vendorId])
   @@index([date])
 }
 
 model Product {
-  id                String          @id @default(cuid())
-  name              String          @unique
-  category          ProductCategory @default(OTHER)
-  unit              String
-  hsn               String?
-  currentStock      Float           @default(0)
-  reorderLevel      Float           @default(0)
-  lastCostPrice     Float           @default(0)
-  vendorId          String?
-  lastPurchaseDate  DateTime?
-  isUncertain       Boolean         @default(false)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  restaurantId     String
+  name             String
+  category         ProductCategory @default(OTHER)
+  unit             String
+  hsn              String?
+  currentStock     Float           @default(0)
+  reorderLevel     Float           @default(0)
+  lastCostPrice    Float           @default(0)
+  vendorId         String?
+  lastPurchaseDate DateTime?
+  isUncertain      Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
-  vendor            Vendor?         @relation(fields: [vendorId], references: [id])
-  lineItems         BillLineItem[]
-  movements         InventoryMovement[]
-  recipeUses        RecipeIngredient[]
-  wasteEntries      WasteEntry[]
+  restaurant   Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  vendor       Vendor?             @relation(fields: [vendorId], references: [id])
+  lineItems    BillLineItem[]
+  movements    InventoryMovement[]
+  recipeUses   RecipeIngredient[]
+  wasteEntries WasteEntry[]
 
+  @@unique([restaurantId, name])
+  @@index([restaurantId])
   @@index([category])
 }
 
 model Bill {
-  id              String        @id @default(cuid())
-  billNumber      String
-  billNumberRaw   String?
-  type            BillType      @default(INVOICE)
-  date            DateTime
-  dueDate         DateTime?
-  vendorId        String
-  subtotal        Float
-  sgst            Float         @default(0)
-  cgst            Float         @default(0)
-  roundoff        Float         @default(0)
-  grandTotal      Float
-  paymentStatus   PaymentStatus @default(UNKNOWN)
-  category        ProductCategory @default(OTHER)
-  notes           String?
-  isUncertain     Boolean       @default(false)
-  sourceFile      String?
-  sourcePages     String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id            String          @id @default(cuid())
+  restaurantId  String
+  billNumber    String
+  billNumberRaw String?
+  type          BillType        @default(INVOICE)
+  date          DateTime
+  dueDate       DateTime?
+  vendorId      String
+  subtotal      Float
+  sgst          Float           @default(0)
+  cgst          Float           @default(0)
+  roundoff      Float           @default(0)
+  grandTotal    Float
+  paymentStatus PaymentStatus   @default(UNKNOWN)
+  category      ProductCategory @default(OTHER)
+  notes         String?
+  isUncertain   Boolean         @default(false)
+  sourceFile    String?
+  sourcePages   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  vendor          Vendor        @relation(fields: [vendorId], references: [id])
-  lineItems       BillLineItem[]
-  movements       InventoryMovement[]
+  restaurant Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  vendor     Vendor              @relation(fields: [vendorId], references: [id])
+  lineItems  BillLineItem[]
+  movements  InventoryMovement[]
 
+  @@index([restaurantId])
   @@index([date])
   @@index([vendorId])
 }
 
+// No restaurantId — scoped through `bill: { restaurantId }`.
 model BillLineItem {
-  id           String   @id @default(cuid())
-  billId       String
-  productId    String
+  id             String  @id @default(cuid())
+  billId         String
+  productId      String
   productNameRaw String
-  unit         String
-  hsn          String?
-  mrp          Float    @default(0)
-  quantity     Float
-  rate         Float
-  discount     Float    @default(0)
-  sgstRate     Float    @default(0)
-  cgstRate     Float    @default(0)
-  amount       Float
+  unit           String
+  hsn            String?
+  mrp            Float   @default(0)
+  quantity       Float
+  rate           Float
+  discount       Float   @default(0)
+  sgstRate       Float   @default(0)
+  cgstRate       Float   @default(0)
+  amount         Float
 
-  bill         Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
-  product      Product  @relation(fields: [productId], references: [id])
+  bill    Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
 
   @@index([billId])
   @@index([productId])
 }
 
+// No restaurantId — scoped through `product: { restaurantId }`.
 model InventoryMovement {
   id        String       @id @default(cuid())
   productId String
@@ -177,47 +235,39 @@ model InventoryMovement {
   notes     String?
   createdAt DateTime     @default(now())
 
-  product   Product      @relation(fields: [productId], references: [id])
-  bill      Bill?        @relation(fields: [billId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  bill    Bill?   @relation(fields: [billId], references: [id])
 
   @@index([productId])
   @@index([date])
 }
 
-// Singleton (id is always "default") holding the branding for whichever
-// restaurant is running this instance — used on the sidebar, PDF/Excel
-// reports, ledger statements, and payment receipts. Keeping it as data
-// rather than a hardcoded name is what makes the app reusable per-restaurant
-// later without code changes.
-model RestaurantProfile {
-  id        String   @id @default("default")
-  name      String
-  address   String?
-  phone     String?
-  gstin     String?
-  updatedAt DateTime @updatedAt
-}
-
 // ---- Sales & Growth ----
 // Revenue side of the business. Sales data comes either from a PetPooja
-// export (imported via /sales/import, which fans out into DailySales +
-// MenuItemSale rows) or manual daily entry. Recipes link menu items back to
-// the same Products already tracked on the purchase side, so food cost /
-// margin per dish is computed from real ingredient prices, not guessed.
+// export (Orders Master / Executive Summary / Day End, or an item-wise CSV)
+// or manual daily entry. Recipes link menu items back to the same Products
+// already tracked on the purchase side, so food cost / margin per dish is
+// computed from real ingredient prices, not guessed.
 
 model MenuItem {
   id           String   @id @default(cuid())
-  name         String   @unique
+  restaurantId String
+  name         String
   category     String?
   sellingPrice Float    @default(0)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  recipe       RecipeIngredient[]
-  sales        MenuItemSale[]
+  restaurant Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  recipe     RecipeIngredient[]
+  sales      MenuItemSale[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId])
 }
 
+// No restaurantId — scoped through `menuItem: { restaurantId }`.
 model RecipeIngredient {
   id         String @id @default(cuid())
   menuItemId String
@@ -225,20 +275,22 @@ model RecipeIngredient {
   quantity   Float
   unit       String
 
-  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  product    Product  @relation(fields: [productId], references: [id])
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
 
   @@index([menuItemId])
   @@index([productId])
 }
 
-// One row per calendar day — the aggregate revenue/channel/payment-mode
-// summary for that day, whether it came from a PetPooja import or manual
-// entry. `date` is unique so re-importing or re-entering a day updates it
-// instead of duplicating.
+// One row per calendar day per restaurant — the aggregate revenue/channel/
+// payment-mode summary for that day, whether it came from a PetPooja import
+// or manual entry. Two different restaurants both have a "28 July 2026", so
+// the uniqueness that prevents duplicate entries is now (restaurant, date),
+// not date alone.
 model DailySales {
   id                 String   @id @default(cuid())
-  date               DateTime @unique
+  restaurantId       String
+  date               DateTime
   dineInRevenue      Float    @default(0)
   deliveryRevenue    Float    @default(0)
   takeawayRevenue    Float    @default(0)
@@ -253,11 +305,15 @@ model DailySales {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  items              MenuItemSale[]
+  restaurant Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items      MenuItemSale[]
 
+  @@unique([restaurantId, date])
+  @@index([restaurantId])
   @@index([date])
 }
 
+// No restaurantId — scoped through `dailySales: { restaurantId }`.
 model MenuItemSale {
   id           String @id @default(cuid())
   dailySalesId String
@@ -265,8 +321,8 @@ model MenuItemSale {
   quantity     Float
   revenue      Float
 
-  dailySales   DailySales @relation(fields: [dailySalesId], references: [id], onDelete: Cascade)
-  menuItem     MenuItem   @relation(fields: [menuItemId], references: [id])
+  dailySales DailySales @relation(fields: [dailySalesId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id])
 
   @@index([dailySalesId])
   @@index([menuItemId])
@@ -280,18 +336,23 @@ enum LaborCategory {
 }
 
 model LaborCost {
-  id        String        @id @default(cuid())
-  date      DateTime
-  category  LaborCategory @default(WAGES)
-  amount    Float
-  notes     String?
-  createdAt DateTime      @default(now())
+  id           String        @id @default(cuid())
+  restaurantId String
+  date         DateTime
+  category     LaborCategory @default(WAGES)
+  amount       Float
+  notes        String?
+  createdAt    DateTime      @default(now())
 
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
   @@index([date])
 }
 
 model WasteEntry {
   id            String   @id @default(cuid())
+  restaurantId  String
   date          DateTime
   productId     String
   quantity      Float
@@ -300,19 +361,35 @@ model WasteEntry {
   notes         String?
   createdAt     DateTime @default(now())
 
-  product       Product  @relation(fields: [productId], references: [id])
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
 
+  @@index([restaurantId])
   @@index([productId])
   @@index([date])
 }
 
 // ---- Access control ----
-// Sign-in gates the whole app. Admins register everyone else — there is no
-// public sign-up. Passwords are stored as scrypt hashes (see src/lib/auth.ts),
-// never in plain text, and the session itself is a signed JWT cookie.
+// Sign-in gates the whole app. There is no public sign-up, ever, at any
+// level. Three tiers:
+//
+//   SUPER_ADMIN       Partywalas platform. Creates restaurants and their
+//                     first RESTAURANT_ADMIN. restaurantId is always null —
+//                     that absence is what keeps them out of every
+//                     restaurant-scoped query (see requireRestaurantUser).
+//                     Cannot read any restaurant's business data.
+//   RESTAURANT_ADMIN  Runs one restaurant's own CRM: full data access within
+//                     that restaurant, plus can invite/manage that
+//                     restaurant's own USER and RESTAURANT_ADMIN accounts.
+//   USER              Full data access within their one restaurant, no user
+//                     management.
+//
+// Passwords are stored as scrypt hashes (see src/lib/password.ts), never in
+// plain text, and the session itself is a signed JWT cookie.
 
 enum UserRole {
-  ADMIN
+  SUPER_ADMIN
+  RESTAURANT_ADMIN
   USER
 }
 
@@ -322,34 +399,39 @@ model User {
   name         String
   email        String?
   role         UserRole  @default(USER)
+  restaurantId String? // null only for SUPER_ADMIN
   passwordHash String
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
   @@index([username])
+  @@index([restaurantId])
 }
 
 // ---- Audit trail ----
-// Who changed what, when. Two people share this system and an admin can edit
-// anyone's records, so "when did this bill's total change, and who did it"
-// needs an answer that doesn't depend on memory.
-//
-// userName is denormalized on purpose: the log has to stay readable after an
-// account is deleted, and a foreign key would either block that deletion or
-// cascade the history away with it.
+// Who changed what, when, at which restaurant. userName is denormalized on
+// purpose: the log has to stay readable after an account is deleted, and a
+// foreign key would either block that deletion or cascade the history away
+// with it. restaurantId is null for platform-level actions (e.g. a
+// SUPER_ADMIN creating a restaurant) and set for everything else.
 
 model ActivityLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  userName  String
-  action    String // CREATE | UPDATE | DELETE | IMPORT
-  entity    String // Bill | Payment | Vendor | Product | DailySales | User | ...
-  entityId  String?
-  summary   String
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  restaurantId String?
+  userId       String?
+  userName     String
+  action       String // CREATE | UPDATE | DELETE | IMPORT
+  entity       String // Bill | Payment | Vendor | Product | DailySales | User | Restaurant | ...
+  entityId     String?
+  summary      String
+  createdAt    DateTime @default(now())
 
-  @@index([createdAt])
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, createdAt])
   @@index([entity, entityId])
 }
