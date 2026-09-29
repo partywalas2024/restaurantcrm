@@ -79,15 +79,17 @@ model Restaurant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users        User[]
-  vendors      Vendor[]
-  bills        Bill[]
-  products     Product[]
-  menuItems    MenuItem[]
-  dailySales   DailySales[]
-  laborCosts   LaborCost[]
-  wasteEntries WasteEntry[]
-  activityLogs ActivityLog[]
+  users          User[]
+  vendors        Vendor[]
+  bills          Bill[]
+  products       Product[]
+  menuItems      MenuItem[]
+  dailySales     DailySales[]
+  laborCosts     LaborCost[]
+  wasteEntries   WasteEntry[]
+  activityLogs   ActivityLog[]
+  customers      Customer[]
+  customerVisits CustomerVisit[]
 }
 
 model Vendor {
@@ -366,6 +368,51 @@ model WasteEntry {
 
   @@index([restaurantId])
   @@index([productId])
+  @@index([date])
+}
+
+// ---- Guests (CRM) ----
+// Phase 1 of guest CRM: a guest profile plus a manually-logged visit history.
+// There is no per-order POS integration yet (PetPooja sync is file-based
+// report/CSV import, not a live API), so a visit is logged by staff rather
+// than captured automatically from every sale — see CustomerVisit.source.
+
+model Customer {
+  id            String    @id @default(cuid())
+  restaurantId  String
+  phone         String
+  name          String
+  email         String?
+  whatsappOptIn Boolean   @default(false)
+  dietaryNotes  String?
+  birthday      DateTime?
+  anniversary   DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  visits     CustomerVisit[]
+
+  @@unique([restaurantId, phone])
+  @@index([restaurantId])
+}
+
+model CustomerVisit {
+  id           String   @id @default(cuid())
+  restaurantId String
+  customerId   String
+  date         DateTime
+  amount       Float    @default(0)
+  covers       Int?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([customerId])
   @@index([date])
 }
 

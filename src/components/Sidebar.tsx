@@ -26,6 +26,7 @@ import {
   History,
   LogOut,
   Building2,
+  Contact,
 } from "lucide-react";
 import { signOutAction } from "@/lib/auth-actions";
 import type { CurrentUser } from "@/lib/auth";
@@ -39,6 +40,12 @@ const RESTAURANT_SECTIONS = [
       { href: "/menu", label: "Menu & Recipes", icon: BookOpen },
       { href: "/profitability", label: "Profitability (P&L)", icon: LineChart },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Guests",
+    items: [
+      { href: "/guests", label: "Guests", icon: Contact },
     ],
   },
   {
