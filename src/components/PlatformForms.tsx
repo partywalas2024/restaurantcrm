@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
-import { createRestaurantAction, setRestaurantActiveAction, platformResetAdminPasswordAction, type FormState } from "@/lib/auth-actions";
+import { createRestaurantAction, setRestaurantActiveAction, platformResetAdminPasswordAction, platformUpdateRestaurantAction, type FormState } from "@/lib/auth-actions";
 
 const INPUT = "w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm";
 const LABEL = "mb-1 block text-xs font-medium text-muted";
@@ -110,6 +110,67 @@ export function ResetRestaurantAdminPasswordButton({ userId, username }: { userI
           <CheckCircle2 size={12} /> {state.success}
         </p>
       )}
+    </form>
+  );
+}
+
+export function EditRestaurantForm({
+  restaurant,
+}: {
+  restaurant: { id: string; name: string; address: string | null; phone: string | null; gstin: string | null };
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, formAction, pending] = useActionState<FormState, FormData>(platformUpdateRestaurantAction, {});
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-muted"
+      >
+        Edit Details
+      </button>
+    );
+  }
+
+  return (
+    <form action={formAction} className="w-full max-w-sm space-y-2 rounded-lg border border-border bg-surface-muted/40 p-3">
+      <input type="hidden" name="id" value={restaurant.id} />
+      <div>
+        <label className={LABEL}>Restaurant Name *</label>
+        <input name="restaurantName" required defaultValue={restaurant.name} className={INPUT} />
+      </div>
+      <div>
+        <label className={LABEL}>Address</label>
+        <input name="address" defaultValue={restaurant.address ?? ""} className={INPUT} />
+      </div>
+      <div>
+        <label className={LABEL}>Phone</label>
+        <input name="phone" defaultValue={restaurant.phone ?? ""} className={INPUT} />
+      </div>
+      <div>
+        <label className={LABEL}>GSTIN</label>
+        <input name="gstin" defaultValue={restaurant.gstin ?? ""} className={INPUT} />
+      </div>
+      {state.error && (
+        <p role="alert" className="flex items-center gap-1 text-xs text-crit">
+          <AlertCircle size={12} /> {state.error}
+        </p>
+      )}
+      {state.success && (
+        <p className="flex items-center gap-1 text-xs text-ok">
+          <CheckCircle2 size={12} /> {state.success}
+        </p>
+      )}
+      <div className="flex gap-1.5">
+        <button type="submit" disabled={pending} className={`${BUTTON} px-3 py-1.5 text-xs`}>
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-muted">
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

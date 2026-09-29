@@ -338,6 +338,29 @@ export async function platformResetAdminPasswordAction(
   return { success: `Password reset for @${target.username}.` };
 }
 
+export async function platformUpdateRestaurantAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const platformAdmin = await requireSuperAdmin();
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("restaurantName") ?? "").trim();
+  const address = String(formData.get("address") ?? "").trim() || null;
+  const phone = String(formData.get("phone") ?? "").trim() || null;
+  const gstin = String(formData.get("gstin") ?? "").trim() || null;
+
+  if (!name) return { error: "Restaurant name is required." };
+
+  const restaurant = await prisma.restaurant.findUnique({ where: { id } });
+  if (!restaurant) return { error: "Restaurant not found." };
+
+  await prisma.restaurant.update({ where: { id }, data: { name, address, phone, gstin } });
+  await logActivity(platformAdmin, "UPDATE", "Restaurant", id, `Updated details for "${restaurant.name}"${restaurant.name !== name ? ` (renamed to "${name}")` : ""}`);
+
+  revalidatePath("/platform");
+  return { success: "Restaurant details updated." };
+}
+
 export async function setRestaurantActiveAction(formData: FormData) {
   const platformAdmin = await requireSuperAdmin();
   const id = String(formData.get("id") ?? "");
