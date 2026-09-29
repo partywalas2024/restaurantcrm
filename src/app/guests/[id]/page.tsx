@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, EmptyState } from "@/components/Card";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/Badge";
-import { getCustomerById } from "@/lib/customers";
+import { getCustomerById, SEGMENT_TONE, SEGMENT_DESCRIPTION } from "@/lib/customers";
 import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { updateCustomer, deleteCustomer, logCustomerVisit, deleteCustomerVisit } from "@/lib/customer-actions";
@@ -28,6 +28,11 @@ export default async function GuestDetailPage({ params }: { params: Promise<{ id
         <span className="inline-flex items-center gap-1"><Phone size={12} />{guest.phone}</span>
         {guest.email && <span className="inline-flex items-center gap-1"><Mail size={12} />{guest.email}</span>}
         {guest.whatsappOptIn && <Badge tone="ok"><MessageCircle size={11} className="mr-0.5 inline" />WhatsApp OK</Badge>}
+        {guest.visitCount > 0 && (
+          <span title={SEGMENT_DESCRIPTION[guest.segment]}>
+            <Badge tone={SEGMENT_TONE[guest.segment]}>{guest.segment}</Badge>
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -35,6 +40,13 @@ export default async function GuestDetailPage({ params }: { params: Promise<{ id
         <StatCard label="Total Spend" value={formatINR(guest.totalSpend)} icon={Heart} tone="info" />
         <StatCard label="Avg / Visit" value={guest.avgSpend !== null ? formatINR(guest.avgSpend, { decimals: true }) : "—"} icon={Cake} tone="info" />
       </div>
+
+      {guest.visitCount > 0 && (
+        <p className="mt-3 text-xs text-muted">
+          RFM rank (1–5, relative to your other guests) — Recency {guest.rScore}, Frequency {guest.fScore}, Monetary {guest.mScore}.{" "}
+          {SEGMENT_DESCRIPTION[guest.segment]}
+        </p>
+      )}
 
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Card title="Visit History" className="lg:col-span-2">
