@@ -5,7 +5,7 @@ import { Badge } from "@/components/Badge";
 import { requireSuperAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
-import { CreateRestaurantForm, ToggleRestaurantActiveButton } from "@/components/PlatformForms";
+import { CreateRestaurantForm, ToggleRestaurantActiveButton, ResetRestaurantAdminPasswordButton } from "@/components/PlatformForms";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +56,10 @@ export default async function PlatformPage({
                       {r.users[0] ? `Admin: @${r.users[0].username}` : "No admin"} · <Users size={11} className="inline -mt-0.5" /> {r._count.users} user(s) · created {formatDate(r.createdAt)}
                     </p>
                   </div>
-                  <ToggleRestaurantActiveButton id={r.id} isActive={r.isActive} />
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    {r.users[0] && <ResetRestaurantAdminPasswordButton userId={r.users[0].id} username={r.users[0].username} />}
+                    <ToggleRestaurantActiveButton id={r.id} isActive={r.isActive} />
+                  </div>
                 </div>
               ))}
             </div>

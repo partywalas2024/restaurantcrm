@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
-import { AlertCircle } from "lucide-react";
-import { createRestaurantAction, setRestaurantActiveAction, type FormState } from "@/lib/auth-actions";
+import { useActionState, useState } from "react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { createRestaurantAction, setRestaurantActiveAction, platformResetAdminPasswordAction, type FormState } from "@/lib/auth-actions";
 
 const INPUT = "w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm";
 const LABEL = "mb-1 block text-xs font-medium text-muted";
@@ -60,6 +60,56 @@ export function CreateRestaurantForm() {
       <button type="submit" disabled={pending} className={`w-full ${BUTTON}`}>
         {pending ? "Creating…" : "Create Restaurant"}
       </button>
+    </form>
+  );
+}
+
+export function ResetRestaurantAdminPasswordButton({ userId, username }: { userId: string; username: string }) {
+  const [open, setOpen] = useState(false);
+  const [state, formAction, pending] = useActionState<FormState, FormData>(platformResetAdminPasswordAction, {});
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-muted"
+      >
+        Reset Password
+      </button>
+    );
+  }
+
+  return (
+    <form action={formAction} className="flex flex-col items-end gap-1.5">
+      <input type="hidden" name="userId" value={userId} />
+      <div className="flex items-center gap-1.5">
+        <input
+          name="password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          placeholder={`New password for @${username}`}
+          className="w-48 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs"
+        />
+        <button type="submit" disabled={pending} className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark disabled:opacity-60">
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-muted">
+          Cancel
+        </button>
+      </div>
+      {state.error && (
+        <p role="alert" className="flex items-center gap-1 text-xs text-crit">
+          <AlertCircle size={12} /> {state.error}
+        </p>
+      )}
+      {state.success && (
+        <p className="flex items-center gap-1 text-xs text-ok">
+          <CheckCircle2 size={12} /> {state.success}
+        </p>
+      )}
     </form>
   );
 }

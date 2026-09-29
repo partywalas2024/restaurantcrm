@@ -317,6 +317,27 @@ export async function createRestaurantAction(
   redirect(`/platform?created=${encodeURIComponent(restaurantName)}`);
 }
 
+export async function platformResetAdminPasswordAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const platformAdmin = await requireSuperAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  const passwordError = validatePassword(password);
+  if (passwordError) return { error: passwordError };
+
+  const target = await prisma.user.findFirst({ where: { id: userId, role: "RESTAURANT_ADMIN" } });
+  if (!target) return { error: "Restaurant admin not found." };
+
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(password) } });
+  await logActivity(platformAdmin, "UPDATE", "User", userId, `Reset password for @${target.username} (restaurant admin)`);
+
+  revalidatePath("/platform");
+  return { success: `Password reset for @${target.username}.` };
+}
+
 export async function setRestaurantActiveAction(formData: FormData) {
   const platformAdmin = await requireSuperAdmin();
   const id = String(formData.get("id") ?? "");
