@@ -50,7 +50,6 @@ const RESTAURANT_SECTIONS = [
       { href: "/vendors", label: "Vendors", icon: Truck },
       { href: "/products", label: "Product Catalog", icon: Package },
       { href: "/balance-sheet", label: "Balance Sheet", icon: Scale },
-      { href: "/upload", label: "Upload Bills", icon: UploadCloud },
     ],
   },
   {
@@ -88,6 +87,20 @@ function NavLinks({ role, onNavigate }: { role: CurrentUser["role"]; onNavigate?
       : RESTAURANT_SECTIONS;
   return (
     <nav className="flex flex-1 flex-col gap-4 px-3">
+      {!isSuperAdmin && (
+        <Link
+          href="/import"
+          onClick={onNavigate}
+          className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+            isActive(pathname, "/import")
+              ? "bg-brand text-white shadow-sm"
+              : "border border-dashed border-brand/40 text-brand hover:bg-brand/10"
+          }`}
+        >
+          <UploadCloud size={18} strokeWidth={2} />
+          Import
+        </Link>
+      )}
       {sections.map((section) => (
         <div key={section.label}>
           <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">{section.label}</p>
