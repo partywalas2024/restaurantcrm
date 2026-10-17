@@ -4,14 +4,14 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { prisma } from "@/lib/prisma";
-import { requireRestaurantUser } from "@/lib/auth";
+import { requireRestaurantAdmin } from "@/lib/auth";
 import { updateVendor } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditVendorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const vendor = await prisma.vendor.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!vendor) notFound();
 

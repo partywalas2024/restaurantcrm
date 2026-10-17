@@ -59,6 +59,7 @@ Sales ──► MenuItemSale ──► MenuItem ──► RecipeIngredient ─�
 | **Balance Sheet** | Stock value against outstanding payables |
 | **Upload Bills** | Reads a PDF or photo of bills via OpenAI, re-checks the arithmetic, and shows everything for editing and approval before saving |
 | **Add Bill** | Enter a bill by hand when there's no document to scan |
+| **Consumption** | Per product: bought (bills) vs used (staff-logged) vs wasted vs what recipes expect, plus physical stock counts; flags over-use and missing stock, shows price history and days of stock left |
 | **Users & Access** | Restaurant-admin-managed accounts, scoped to that restaurant (no public sign-up) |
 | **Platform → Restaurants** (SUPER_ADMIN only) | Create restaurants, assign their first admin, activate/deactivate — no business data visible here |
 
@@ -167,6 +168,17 @@ The split matters because server actions and route handlers are individually
 addressable HTTP endpoints. A new page, action or handler added without one of
 those calls is not protected by the proxy alone.
 
+**Owner vs Staff.** Inside a restaurant there are two roles (stored as
+`RESTAURANT_ADMIN` and `USER`, shown as **Owner** and **Staff**). Staff can only
+*add* — upload or enter bills, add vendors/products, record payments, log
+guests, log usage and stock counts. Anything that changes or removes an
+existing record (edit/delete a bill, bill line, vendor, product, payment, sales
+day, recipe, guest, usage entry, stock count) is Owner-only via
+`requireRestaurantAdmin()`, and every correction reverses its effect on stock
+and is written to the Activity Log. Staff also cannot open the P&L, Balance
+Sheet, Analytics, Labor Cost, Users or Activity Log pages (they land on Bills).
+`src/lib/roles.ts` holds the labels and `isOwner()`.
+
 **Tenant isolation is enforced the same way, one layer deeper.**
 `requireRestaurantUser()` returns a `restaurantId` that is non-nullable *at
 the type level* — a `SUPER_ADMIN` (whose `restaurantId` is always `null`)
@@ -191,7 +203,7 @@ Defined in [`prisma/schema.prisma`](prisma/schema.prisma). The main entities:
 **Tenant** — `Restaurant` (name, address, GSTIN, `isActive`)
 **Purchases** — `Vendor`, `Bill`, `BillLineItem`, `Product`, `InventoryMovement`, `Payment`
 **Revenue** — `MenuItem`, `RecipeIngredient`, `DailySales`, `MenuItemSale`
-**Operations** — `LaborCost`, `WasteEntry`
+**Operations** — `LaborCost`, `WasteEntry`, `StockCount`
 **System** — `User`, `ActivityLog`
 
 `Vendor`, `Product`, `Bill`, `MenuItem`, `DailySales`, `LaborCost` and

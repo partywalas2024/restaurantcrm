@@ -7,6 +7,8 @@ import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/Badge";
 import { getCustomerById, SEGMENT_TONE, SEGMENT_DESCRIPTION } from "@/lib/customers";
 import { requireRestaurantUser } from "@/lib/auth";
+import { isOwner } from "@/lib/roles";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatDate, formatINR } from "@/lib/format";
 import { updateCustomer, deleteCustomer, logCustomerVisit, deleteCustomerVisit } from "@/lib/customer-actions";
 
@@ -17,6 +19,7 @@ export default async function GuestDetailPage({ params }: { params: Promise<{ id
   const user = await requireRestaurantUser();
   const guest = await getCustomerById(user.restaurantId, id);
   if (!guest) notFound();
+  const owner = isOwner(user.role);
 
   return (
     <div>
@@ -62,12 +65,14 @@ export default async function GuestDetailPage({ params }: { params: Promise<{ id
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{formatINR(v.amount, { decimals: true })}</span>
-                    <form action={deleteCustomerVisit}>
-                      <input type="hidden" name="id" value={v.id} />
-                      <button type="submit" className="text-crit hover:opacity-70" aria-label="Delete visit">
-                        <Trash2 size={14} />
-                      </button>
-                    </form>
+                    {owner && (
+                      <form action={deleteCustomerVisit}>
+                        <input type="hidden" name="id" value={v.id} />
+                        <ConfirmButton message="Delete this logged visit?" className="text-crit hover:opacity-70" aria-label="Delete visit">
+                          <Trash2 size={14} />
+                        </ConfirmButton>
+                      </form>
+                    )}
                   </div>
                 </div>
               ))}
@@ -99,53 +104,65 @@ export default async function GuestDetailPage({ params }: { params: Promise<{ id
         </Card>
 
         <Card title="Guest Details">
-          <form action={updateCustomer} className="space-y-3">
-            <input type="hidden" name="id" value={guest.id} />
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">Name</label>
-              <input name="name" defaultValue={guest.name} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">Phone</label>
-              <input name="phone" defaultValue={guest.phone} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">Email</label>
-              <input name="email" type="email" defaultValue={guest.email ?? ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="whatsappOptIn" defaultChecked={guest.whatsappOptIn} className="rounded border-border" />
-              OK to message on WhatsApp
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted">Birthday</label>
-                <input type="date" name="birthday" defaultValue={guest.birthday ? guest.birthday.toISOString().slice(0, 10) : ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted">Anniversary</label>
-                <input type="date" name="anniversary" defaultValue={guest.anniversary ? guest.anniversary.toISOString().slice(0, 10) : ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">Dietary Notes</label>
-              <input name="dietaryNotes" defaultValue={guest.dietaryNotes ?? ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">Notes</label>
-              <textarea name="notes" rows={3} defaultValue={guest.notes ?? ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
-            </div>
-            <button type="submit" className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
-              Save Changes
-            </button>
-          </form>
+          {owner ? (
+            <>
+              <form action={updateCustomer} className="space-y-3">
+                <input type="hidden" name="id" value={guest.id} />
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Name</label>
+                  <input name="name" defaultValue={guest.name} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Phone</label>
+                  <input name="phone" defaultValue={guest.phone} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Email</label>
+                  <input name="email" type="email" defaultValue={guest.email ?? ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="whatsappOptIn" defaultChecked={guest.whatsappOptIn} className="rounded border-border" />
+                  OK to message on WhatsApp
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Birthday</label>
+                    <input type="date" name="birthday" defaultValue={guest.birthday ? guest.birthday.toISOString().slice(0, 10) : ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Anniversary</label>
+                    <input type="date" name="anniversary" defaultValue={guest.anniversary ? guest.anniversary.toISOString().slice(0, 10) : ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Dietary Notes</label>
+                  <input name="dietaryNotes" defaultValue={guest.dietaryNotes ?? ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Notes</label>
+                  <textarea name="notes" rows={3} defaultValue={guest.notes ?? ""} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+                </div>
+                <button type="submit" className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
+                  Save Changes
+                </button>
+              </form>
 
-          <form action={deleteCustomer} className="mt-3 border-t border-border pt-3">
-            <input type="hidden" name="id" value={guest.id} />
-            <button type="submit" className="w-full rounded-lg border border-crit/30 px-4 py-2 text-sm font-medium text-crit hover:bg-crit-bg">
-              Delete Guest
-            </button>
-          </form>
+              <form action={deleteCustomer} className="mt-3 border-t border-border pt-3">
+                <input type="hidden" name="id" value={guest.id} />
+                <ConfirmButton message={`Delete ${guest.name} and all their logged visits?`} className="w-full rounded-lg border border-crit/30 px-4 py-2 text-sm font-medium text-crit hover:bg-crit-bg">
+                  Delete Guest
+                </ConfirmButton>
+              </form>
+            </>
+          ) : (
+            <div className="space-y-2 text-sm">
+              <p><span className="text-muted">Phone:</span> {guest.phone}</p>
+              {guest.email && <p><span className="text-muted">Email:</span> {guest.email}</p>}
+              {guest.dietaryNotes && <p><span className="text-muted">Dietary:</span> {guest.dietaryNotes}</p>}
+              {guest.notes && <p><span className="text-muted">Notes:</span> {guest.notes}</p>}
+              <p className="pt-1 text-xs text-muted">Only the owner can edit or delete guests. You can log visits.</p>
+            </div>
+          )}
         </Card>
       </div>
     </div>

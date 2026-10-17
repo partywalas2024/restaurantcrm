@@ -54,7 +54,7 @@ export default async function PlatformPage({
                         <Badge tone={r.isActive ? "ok" : "neutral"}>{r.isActive ? "Active" : "Deactivated"}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted">
-                        {r.users[0] ? `Admin: @${r.users[0].username}` : "No admin"} · <Users size={11} className="inline -mt-0.5" /> {r._count.users} user(s) · created {formatDate(r.createdAt)}
+                        {r.users[0] ? `Owner: @${r.users[0].username}` : "No owner"} · <Users size={11} className="inline -mt-0.5" /> {r._count.users} user(s) · created {formatDate(r.createdAt)}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">

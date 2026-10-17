@@ -9,6 +9,9 @@ export async function GET(req: NextRequest) {
   const guard = await apiRestaurantGuard();
   if ("denied" in guard) return guard.denied;
   const { user } = guard;
+  if (user.role !== "RESTAURANT_ADMIN") {
+    return NextResponse.json({ error: "Only the owner can view reports." }, { status: 403 });
+  }
 
   const monthParam = req.nextUrl.searchParams.get("month");
   const months = await getAvailableMonths(user.restaurantId);

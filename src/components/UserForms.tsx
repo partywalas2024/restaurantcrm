@@ -47,7 +47,7 @@ export function NewUserForm() {
       </div>
       <div>
         <label className={LABEL}>Full Name *</label>
-        <input name="name" required className={INPUT} placeholder="e.g. Junction 14 Manager" />
+        <input name="name" required className={INPUT} placeholder="e.g. Store Manager" />
       </div>
       <div>
         <label className={LABEL}>Email</label>
@@ -56,8 +56,8 @@ export function NewUserForm() {
       <div>
         <label className={LABEL}>Role *</label>
         <select name="role" defaultValue="USER" className={INPUT}>
-          <option value="USER">User — full access to the CRM</option>
-          <option value="RESTAURANT_ADMIN">Admin — can also manage users</option>
+          <option value="USER">Staff — can add &amp; upload bills, cannot edit or delete</option>
+          <option value="RESTAURANT_ADMIN">Owner — full access, edit/delete, manage team</option>
         </select>
       </div>
       <div>
@@ -94,8 +94,8 @@ export function EditUserForm({
       <div>
         <label className={LABEL}>Role</label>
         <select name="role" defaultValue={user.role} className={INPUT}>
-          <option value="USER">User — full access to the CRM</option>
-          <option value="RESTAURANT_ADMIN">Admin — can also manage users</option>
+          <option value="USER">Staff — can add &amp; upload bills, cannot edit or delete</option>
+          <option value="RESTAURANT_ADMIN">Owner — full access, edit/delete, manage team</option>
         </select>
       </div>
       <label className="flex items-center gap-2 text-sm">

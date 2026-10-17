@@ -56,6 +56,7 @@ enum MovementType {
   PURCHASE
   RETURN
   ADJUSTMENT
+  CONSUMPTION
 }
 
 enum PaymentMethod {
@@ -90,6 +91,7 @@ model Restaurant {
   activityLogs   ActivityLog[]
   customers      Customer[]
   customerVisits CustomerVisit[]
+  stockCounts    StockCount[]
 }
 
 model Vendor {
@@ -164,6 +166,7 @@ model Product {
   movements    InventoryMovement[]
   recipeUses   RecipeIngredient[]
   wasteEntries WasteEntry[]
+  stockCounts  StockCount[]
 
   @@unique([restaurantId, name])
   @@index([restaurantId])
@@ -413,6 +416,34 @@ model CustomerVisit {
 
   @@index([restaurantId])
   @@index([customerId])
+  @@index([date])
+}
+
+// ---- Consumption tracking ----
+// Bills only record what was bought. Consumption is tracked three ways and
+// compared on /consumption: logged usage (InventoryMovement type CONSUMPTION,
+// negative quantity like every other movement), recipe-expected usage
+// (MenuItemSale x RecipeIngredient), and physical stock counts below.
+// A count sets the product's stock to what was physically counted; `variance`
+// (counted - system) is the unexplained gain/loss at that moment. `movementId`
+// points at the ADJUSTMENT movement it wrote, so deleting a count can undo it.
+model StockCount {
+  id           String   @id @default(cuid())
+  restaurantId String
+  productId    String
+  date         DateTime
+  countedQty   Float
+  systemQty    Float
+  variance     Float
+  movementId   String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([productId])
   @@index([date])
 }
 

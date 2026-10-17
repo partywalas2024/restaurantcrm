@@ -50,7 +50,7 @@ export default async function ManageUserPage({
         actions={
           <>
             <Badge tone={user.role === "RESTAURANT_ADMIN" ? "info" : "neutral"}>
-              {user.role === "RESTAURANT_ADMIN" ? "Admin" : "User"}
+              {user.role === "RESTAURANT_ADMIN" ? "Owner" : "Staff"}
             </Badge>
             <Badge tone={user.isActive ? "ok" : "crit"}>{user.isActive ? "Active" : "Disabled"}</Badge>
           </>

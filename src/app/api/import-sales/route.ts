@@ -45,6 +45,9 @@ export async function POST(req: NextRequest) {
   const guard = await apiRestaurantGuard();
   if ("denied" in guard) return guard.denied;
   const { user } = guard;
+  if (user.role !== "RESTAURANT_ADMIN") {
+    return NextResponse.json({ error: "Only the owner can import sales." }, { status: 403 });
+  }
 
   const body = (await req.json()) as {
     rows: Record<string, string>[];

@@ -38,7 +38,7 @@ export function CreateRestaurantForm() {
         <input name="gstin" className={INPUT} />
       </div>
 
-      <h3 className="pt-2 text-xs font-semibold text-muted">Restaurant Admin</h3>
+      <h3 className="pt-2 text-xs font-semibold text-muted">Restaurant Owner</h3>
       <div>
         <label className={LABEL}>Username *</label>
         <input name="username" required autoCapitalize="none" spellCheck={false} className={INPUT} placeholder="e.g. junction14" />
@@ -54,7 +54,7 @@ export function CreateRestaurantForm() {
       <div>
         <label className={LABEL}>Initial Password *</label>
         <input name="password" type="password" required minLength={8} autoComplete="new-password" className={INPUT} />
-        <p className="mt-1 text-xs text-muted">At least 8 characters. Share it with the restaurant&apos;s admin directly.</p>
+        <p className="mt-1 text-xs text-muted">At least 8 characters. Share it with the restaurant&apos;s owner directly.</p>
       </div>
 
       <button type="submit" disabled={pending} className={`w-full ${BUTTON}`}>

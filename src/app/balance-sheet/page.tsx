@@ -7,13 +7,13 @@ import { Badge } from "@/components/Badge";
 import { ExportButton } from "@/components/ExportButton";
 import { getBalanceSheet } from "@/lib/data";
 import { getRestaurant } from "@/lib/settings";
-import { requireRestaurantUser } from "@/lib/auth";
+import { requireRestaurantAdmin } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function BalanceSheetPage() {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const [sheet, profile] = await Promise.all([getBalanceSheet(user.restaurantId), getRestaurant(user.restaurantId)]);
   const today = formatDate(new Date());
 

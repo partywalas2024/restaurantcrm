@@ -7,6 +7,8 @@ import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { getAvailableSalesMonths, getSalesForMonth } from "@/lib/sales";
 import { requireRestaurantUser } from "@/lib/auth";
+import { isOwner } from "@/lib/roles";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatDate, formatINR, formatNumber, pctChange } from "@/lib/format";
 import { deleteDailySales } from "@/lib/sales-actions";
 
@@ -20,15 +22,20 @@ export default async function SalesPage({
   const params = await searchParams;
   const user = await requireRestaurantUser();
   const months = await getAvailableSalesMonths(user.restaurantId);
+  const owner = isOwner(user.role);
 
   const actions = (
     <>
-      <Link href="/sales/import-reports" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
-        <UploadCloud size={14} /> Sync PetPooja Reports
-      </Link>
-      <Link href="/sales/import" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
-        <UploadCloud size={14} /> Import Item-wise CSV
-      </Link>
+      {owner && (
+        <>
+          <Link href="/sales/import-reports" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
+            <UploadCloud size={14} /> Sync PetPooja Reports
+          </Link>
+          <Link href="/sales/import" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
+            <UploadCloud size={14} /> Import Item-wise CSV
+          </Link>
+        </>
+      )}
       <Link href="/sales/entry" className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark">
         <Plus size={14} /> Add Entry
       </Link>
@@ -105,10 +112,12 @@ export default async function SalesPage({
                         <Badge tone={r.source === "PETPOOJA_IMPORT" ? "info" : "neutral"}>{r.source === "PETPOOJA_IMPORT" ? "POS Import" : "Manual"}</Badge>
                       </td>
                       <td className="py-2.5">
-                        <form action={deleteDailySales}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <button type="submit" className="text-xs text-crit hover:underline">Delete</button>
-                        </form>
+                        {owner && (
+                          <form action={deleteDailySales}>
+                            <input type="hidden" name="id" value={r.id} />
+                            <ConfirmButton message="Delete this day's sales record?" className="text-xs text-crit hover:underline">Delete</ConfirmButton>
+                          </form>
+                        )}
                       </td>
                     </tr>
                   );

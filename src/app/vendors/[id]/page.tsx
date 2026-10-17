@@ -11,16 +11,26 @@ import { getRestaurant } from "@/lib/settings";
 import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments";
-import { recordPayment, deletePayment } from "@/lib/actions";
+import { recordPayment, deletePayment, deleteVendor } from "@/lib/actions";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { isOwner } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
-export default async function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function VendorDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
+}) {
   const { id } = await params;
+  const { error } = await searchParams;
   const user = await requireRestaurantUser();
   const [ledger, profile] = await Promise.all([getVendorLedger(user.restaurantId, id), getRestaurant(user.restaurantId)]);
   if (!ledger) notFound();
   const { vendor, entries, totalDebit, totalCredit, balance } = ledger;
+  const owner = isOwner(user.role);
 
   return (
     <div>
@@ -32,17 +42,31 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
         description={vendor.gstin ? `GSTIN: ${vendor.gstin}` : undefined}
         actions={
           <>
-            <Link
-              href={`/vendors/${vendor.id}/edit`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted"
-            >
-              <Pencil size={14} /> Edit Vendor
-            </Link>
+            {owner && (
+              <>
+                <Link
+                  href={`/vendors/${vendor.id}/edit`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted"
+                >
+                  <Pencil size={14} /> Edit Vendor
+                </Link>
+                <form action={deleteVendor}>
+                  <input type="hidden" name="id" value={vendor.id} />
+                  <ConfirmButton
+                    message={`Delete vendor ${vendor.name}? Only possible when it has no bills or payments.`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-crit/30 bg-surface px-3 py-1.5 text-sm font-medium text-crit hover:bg-crit-bg"
+                  >
+                    Delete Vendor
+                  </ConfirmButton>
+                </form>
+              </>
+            )}
             <LedgerExportButtons vendorId={vendor.id} vendorName={vendor.name} restaurant={profile} />
           </>
         }
       />
 
+      {error && <p className="mb-4 rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">{error}</p>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Total Billed" value={formatINR(totalDebit)} icon={Receipt} />
         <StatCard label="Total Paid / Credited" value={formatINR(totalCredit)} icon={CreditCard} tone="ok" />
@@ -91,13 +115,15 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
                         {e.type === "PAYMENT" && (
                           <div className="flex items-center gap-2">
                             <ReceiptButton paymentId={e.id} />
-                            <form action={deletePayment}>
-                              <input type="hidden" name="id" value={e.id} />
-                              <input type="hidden" name="vendorId" value={vendor.id} />
-                              <button type="submit" className="text-xs text-crit hover:underline">
-                                Delete
-                              </button>
-                            </form>
+                            {owner && (
+                              <form action={deletePayment}>
+                                <input type="hidden" name="id" value={e.id} />
+                                <input type="hidden" name="vendorId" value={vendor.id} />
+                                <ConfirmButton message="Delete this payment? The vendor balance will go back up." className="text-xs text-crit hover:underline">
+                                  Delete
+                                </ConfirmButton>
+                              </form>
+                            )}
                           </div>
                         )}
                       </td>

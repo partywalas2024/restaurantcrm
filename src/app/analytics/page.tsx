@@ -7,7 +7,7 @@ import { BarList } from "@/components/charts/BarList";
 import { ExportButton } from "@/components/ExportButton";
 import { getAvailableMonths, getOverview, getDailyTrend, getVendors, getProducts, getMonthlyTrend } from "@/lib/data";
 import { getRevenueTrend, getMenuItemPerformance, getSalesForMonth, getDayOfWeekPattern, projectNextValue } from "@/lib/sales";
-import { requireRestaurantUser } from "@/lib/auth";
+import { requireRestaurantAdmin } from "@/lib/auth";
 import { formatDate, formatINR, formatMonth } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export default async function AnalyticsPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const months = await getAvailableMonths(user.restaurantId);
   if (months.length === 0) {
     return (

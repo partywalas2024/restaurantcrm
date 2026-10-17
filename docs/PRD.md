@@ -27,11 +27,14 @@ Three roles:
   Deliberately **cannot** see any restaurant's business data — `restaurantId`
   is `null` on this role and every business-data function requires a non-null
   one, so this is a structural guarantee, not a policy.
-- **RESTAURANT_ADMIN** — full access to their own restaurant's data, plus user
+- **RESTAURANT_ADMIN (Owner)** — full access to their own restaurant's data, plus user
   management for that restaurant (create/deactivate/delete accounts, reset
-  passwords). Currently: `junction14`.
-- **USER** — full access to their own restaurant's business data, no user
-  management.
+  passwords). The only role that can edit or delete existing records (duplicate or
+  wrong bills, lines, vendors, products, payments, usage/count entries).
+  Currently: `junction14`.
+- **USER (Staff)** — can add and upload (bills, vendors, products, payments, guests,
+  usage, stock counts) but cannot edit or delete anything, and cannot see P&L,
+  Balance Sheet, Analytics, Labor Cost, Users or Activity Log.
 
 No public sign-up. Accounts are created by the admin one level up (Partywalas
 admin creates restaurant admins; restaurant admins create their own team).
@@ -118,6 +121,16 @@ Purchases and sales are two independent data feeds that meet at the P&L through 
 |---|---|
 | Restaurant profile (name, address, GSTIN) drives branding across the app, editable by that restaurant's admin | ✅ Live |
 | OpenAI model configurable via env var | ✅ Live |
+
+### 4.5b Consumption tracking
+
+| Requirement | Status |
+|---|---|
+| Per-product monthly view: bought, spend, avg rate, logged usage, waste, recipe-expected usage, count variance | ✅ Live |
+| Staff log usage (reduces stock) and record physical stock counts (variance kept) | ✅ Live |
+| Owner can delete a wrong usage entry or count; stock is reversed | ✅ Live |
+| Flags: stock missing, over recipe, usage not logged; days-of-stock-left with stated basis | ✅ Live |
+| Purchase price history and swing per product | ✅ Live |
 
 ### 4.6 Platform (Partywalas)
 

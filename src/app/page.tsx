@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   Wallet,
@@ -40,6 +41,8 @@ export default async function OverviewPage({
 }) {
   const params = await searchParams;
   const user = await requireRestaurantUser();
+  // The overview is profit-and-loss level; staff work from the bills list.
+  if (user.role !== "RESTAURANT_ADMIN") redirect("/bills");
   const restaurantId = user.restaurantId;
   const [months, profile] = await Promise.all([getAvailableBusinessMonths(restaurantId), getRestaurant(restaurantId)]);
 

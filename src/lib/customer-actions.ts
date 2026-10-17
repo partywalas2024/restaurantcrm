@@ -7,7 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireRestaurantUser } from "@/lib/auth";
+import { requireRestaurantUser, requireRestaurantAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
 
 const PHONE_RE = /^[0-9+][0-9+\-() ]{6,19}$/;
@@ -42,7 +42,7 @@ export async function createCustomer(formData: FormData) {
 }
 
 export async function updateCustomer(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
@@ -69,7 +69,7 @@ export async function updateCustomer(formData: FormData) {
 }
 
 export async function deleteCustomer(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const existing = await prisma.customer.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Guest not found.");
@@ -101,7 +101,7 @@ export async function logCustomerVisit(formData: FormData) {
 }
 
 export async function deleteCustomerVisit(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const existing = await prisma.customerVisit.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Visit not found.");

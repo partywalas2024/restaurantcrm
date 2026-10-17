@@ -1,6 +1,11 @@
 // Server actions for the purchase side — bills, products, vendors, payments,
 // stock adjustments and the restaurant profile.
 //
+// Permission model: Staff (role USER) can only ADD — upload/enter bills, add
+// vendors/products, record payments. Anything that changes or removes an
+// existing record is Owner-only (`requireRestaurantAdmin()`), so a staff
+// mistake or duplicate can only be corrected by the owner, and is logged.
+//
 // Each action re-checks the session with `requireRestaurantUser()`. That is
 // not belt-and-braces: server actions are individually addressable HTTP
 // endpoints, so the sign-in gate in proxy.ts does not protect them on its
@@ -20,12 +25,16 @@ import { importBills, type ExtractedBill, type ExtractedItem } from "@/lib/impor
 import type { PaymentMethod, PaymentStatus, ProductCategory } from "@/generated/prisma/enums";
 
 export async function updateBill(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const paymentStatus = formData.get("paymentStatus") as PaymentStatus | null;
   const category = formData.get("category") as ProductCategory | null;
   const notes = formData.get("notes") as string | null;
   const billNumber = formData.get("billNumber") as string | null;
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
+  const newDate = dateRaw ? new Date(dateRaw) : null;
+  if (newDate && Number.isNaN(newDate.getTime())) throw new Error("Invalid bill date.");
 
   const existing = await prisma.bill.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Bill not found.");
@@ -37,8 +46,12 @@ export async function updateBill(formData: FormData) {
       ...(category ? { category } : {}),
       ...(notes !== null ? { notes } : {}),
       ...(billNumber ? { billNumber, isUncertain: false } : {}),
+      ...(newDate ? { date: newDate } : {}),
+      ...(formData.has("dueDate") ? { dueDate: dueDateRaw ? new Date(dueDateRaw) : null } : {}),
     },
   });
+  // Stock movements carry the bill's date, so keep them in step.
+  if (newDate) await prisma.inventoryMovement.updateMany({ where: { billId: id }, data: { date: newDate } });
   await logActivity(user, "UPDATE", "Bill", id, `Updated bill ${updated.billNumber}`);
 
   revalidatePath("/bills");
@@ -49,7 +62,7 @@ export async function updateBill(formData: FormData) {
 }
 
 export async function updateProduct(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const category = formData.get("category") as ProductCategory | null;
   const reorderLevel = formData.get("reorderLevel");
@@ -60,12 +73,21 @@ export async function updateProduct(formData: FormData) {
   const existing = await prisma.product.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Product not found.");
 
+  // A direct stock edit is recorded as an adjustment so stock always equals
+  // the sum of its movements and the consumption report can explain it.
+  const newStock = currentStock !== null && currentStock !== "" ? Number(currentStock) : null;
+  if (newStock !== null && Number.isFinite(newStock) && newStock !== existing.currentStock) {
+    await prisma.inventoryMovement.create({
+      data: { productId: id, type: "ADJUSTMENT", quantity: newStock - existing.currentStock, date: new Date(), notes: `Owner edited stock ${existing.currentStock} -> ${newStock}` },
+    });
+  }
+
   const updated = await prisma.product.update({
     where: { id },
     data: {
       ...(category ? { category } : {}),
       ...(reorderLevel !== null && reorderLevel !== "" ? { reorderLevel: Number(reorderLevel) } : {}),
-      ...(currentStock !== null && currentStock !== "" ? { currentStock: Number(currentStock) } : {}),
+      ...(newStock !== null && Number.isFinite(newStock) ? { currentStock: newStock } : {}),
       ...(unit ? { unit } : {}),
       ...(name ? { name, isUncertain: false } : {}),
     },
@@ -79,7 +101,7 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function updateVendor(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const name = (formData.get("name") as string | null)?.trim();
   const phone = formData.get("phone") as string | null;
@@ -170,7 +192,7 @@ export async function recordPayment(formData: FormData) {
 }
 
 export async function deletePayment(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const vendorId = String(formData.get("vendorId"));
 
@@ -188,7 +210,7 @@ export async function deletePayment(formData: FormData) {
 }
 
 export async function adjustStock(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const productId = String(formData.get("productId"));
   const delta = Number(formData.get("delta"));
   const notes = (formData.get("notes") as string | null) ?? "";
@@ -216,6 +238,169 @@ export async function adjustStock(formData: FormData) {
   revalidatePath("/inventory");
   revalidatePath("/products");
   revalidatePath("/");
+}
+
+// ---- Owner-only corrections: delete / edit wrong or duplicate records ----
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Point a product's "last cost" and "last purchase date" back at its newest remaining purchase. */
+async function refreshProductCost(productId: string) {
+  const latest = await prisma.billLineItem.findFirst({
+    where: { productId, bill: { type: "INVOICE" } },
+    orderBy: { bill: { date: "desc" } },
+    include: { bill: { select: { date: true } } },
+  });
+  await prisma.product.update({
+    where: { id: productId },
+    data: latest ? { lastCostPrice: latest.rate, lastPurchaseDate: latest.bill.date } : { lastCostPrice: 0, lastPurchaseDate: null },
+  });
+}
+
+function revalidatePurchasePages() {
+  revalidatePath("/bills");
+  revalidatePath("/inventory");
+  revalidatePath("/products");
+  revalidatePath("/consumption");
+  revalidatePath("/vendors");
+  revalidatePath("/expenses");
+  revalidatePath("/balance-sheet");
+  revalidatePath("/analytics");
+  revalidatePath("/");
+}
+
+/** Deletes a whole bill (e.g. a duplicate upload) and reverses every stock movement it caused. */
+export async function deleteBill(formData: FormData) {
+  const user = await requireRestaurantAdmin();
+  const id = String(formData.get("id"));
+
+  const bill = await prisma.bill.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+    include: { lineItems: true, vendor: { select: { name: true } } },
+  });
+  if (!bill) throw new Error("Bill not found.");
+  const sign = bill.type === "RETURN" ? -1 : 1;
+
+  await prisma.$transaction(async (tx) => {
+    for (const li of bill.lineItems) {
+      await tx.product.update({ where: { id: li.productId }, data: { currentStock: { increment: -sign * li.quantity } } });
+    }
+    await tx.inventoryMovement.deleteMany({ where: { billId: id } });
+    await tx.bill.delete({ where: { id } });
+  });
+  for (const productId of new Set(bill.lineItems.map((li) => li.productId))) await refreshProductCost(productId);
+
+  await logActivity(user, "DELETE", "Bill", id, `Deleted bill ${bill.billNumber} (${bill.vendor.name}, Rs. ${bill.grandTotal.toFixed(2)}) and reversed its stock`);
+  revalidatePurchasePages();
+  redirect("/bills");
+}
+
+/** Fixes a wrong quantity / rate / unit on one bill line; stock, bill totals and last-cost follow. */
+export async function updateBillLineItem(formData: FormData) {
+  const user = await requireRestaurantAdmin();
+  const id = String(formData.get("lineItemId"));
+  const quantity = Number(formData.get("quantity"));
+  const rate = Number(formData.get("rate"));
+  const unit = String(formData.get("unit") ?? "").trim();
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantity must be a positive number.");
+  if (!Number.isFinite(rate) || rate < 0) throw new Error("Rate must be zero or more.");
+
+  const li = await prisma.billLineItem.findFirst({
+    where: { id, bill: { restaurantId: user.restaurantId } },
+    include: { bill: { include: { lineItems: true } } },
+  });
+  if (!li) throw new Error("Line item not found.");
+  const bill = li.bill;
+  const sign = bill.type === "RETURN" ? -1 : 1;
+  const amount = round2(quantity * rate);
+  const subtotal = round2(bill.lineItems.reduce((s, x) => s + (x.id === id ? amount : x.amount), 0));
+  const grandTotal = round2(subtotal + bill.sgst + bill.cgst + bill.roundoff);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.billLineItem.update({ where: { id }, data: { quantity, rate, amount, ...(unit ? { unit } : {}) } });
+    await tx.product.update({ where: { id: li.productId }, data: { currentStock: { increment: sign * (quantity - li.quantity) } } });
+    const movement = await tx.inventoryMovement.findFirst({
+      where: { billId: bill.id, productId: li.productId, quantity: sign * li.quantity },
+    });
+    if (movement) await tx.inventoryMovement.update({ where: { id: movement.id }, data: { quantity: sign * quantity } });
+    await tx.bill.update({ where: { id: bill.id }, data: { subtotal, grandTotal } });
+  });
+  await refreshProductCost(li.productId);
+
+  await logActivity(user, "UPDATE", "Bill", bill.id, `Corrected line "${li.productNameRaw}" on bill ${bill.billNumber}: ${li.quantity} x ${li.rate} -> ${quantity} x ${rate}`);
+  revalidatePurchasePages();
+  revalidatePath(`/bills/${bill.id}`);
+}
+
+/** Removes one wrong/duplicate line from a bill. The last remaining line can't be removed — delete the bill instead. */
+export async function deleteBillLineItem(formData: FormData) {
+  const user = await requireRestaurantAdmin();
+  const id = String(formData.get("lineItemId"));
+
+  const li = await prisma.billLineItem.findFirst({
+    where: { id, bill: { restaurantId: user.restaurantId } },
+    include: { bill: { include: { lineItems: true } } },
+  });
+  if (!li) throw new Error("Line item not found.");
+  const bill = li.bill;
+  if (bill.lineItems.length <= 1) throw new Error("This is the only line on the bill — delete the whole bill instead.");
+  const sign = bill.type === "RETURN" ? -1 : 1;
+  const subtotal = round2(bill.lineItems.filter((x) => x.id !== id).reduce((s, x) => s + x.amount, 0));
+  const grandTotal = round2(subtotal + bill.sgst + bill.cgst + bill.roundoff);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({ where: { id: li.productId }, data: { currentStock: { increment: -sign * li.quantity } } });
+    const movement = await tx.inventoryMovement.findFirst({
+      where: { billId: bill.id, productId: li.productId, quantity: sign * li.quantity },
+    });
+    if (movement) await tx.inventoryMovement.delete({ where: { id: movement.id } });
+    await tx.billLineItem.delete({ where: { id } });
+    await tx.bill.update({ where: { id: bill.id }, data: { subtotal, grandTotal } });
+  });
+  await refreshProductCost(li.productId);
+
+  await logActivity(user, "DELETE", "Bill", bill.id, `Removed line "${li.productNameRaw}" (${li.quantity} ${li.unit}) from bill ${bill.billNumber}`);
+  revalidatePurchasePages();
+  revalidatePath(`/bills/${bill.id}`);
+}
+
+/** Deletes a vendor with no bills or payments (e.g. a duplicate). Otherwise explains what's blocking it. */
+export async function deleteVendor(formData: FormData) {
+  const user = await requireRestaurantAdmin();
+  const id = String(formData.get("id"));
+  const vendor = await prisma.vendor.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+    include: { _count: { select: { bills: true, payments: true } } },
+  });
+  if (!vendor) throw new Error("Vendor not found.");
+  if (vendor._count.bills > 0 || vendor._count.payments > 0) {
+    redirect(`/vendors/${id}?error=${encodeURIComponent(`Can't delete ${vendor.name}: it has ${vendor._count.bills} bill(s) and ${vendor._count.payments} payment(s). Delete those first.`)}`);
+  }
+  await prisma.product.updateMany({ where: { vendorId: id }, data: { vendorId: null } });
+  await prisma.vendor.delete({ where: { id } });
+  await logActivity(user, "DELETE", "Vendor", id, `Deleted vendor ${vendor.name}`);
+  revalidatePurchasePages();
+  redirect("/vendors");
+}
+
+/** Deletes a product that was never purchased or used in a recipe/waste entry (e.g. a mis-scanned duplicate name). */
+export async function deleteProduct(formData: FormData) {
+  const user = await requireRestaurantAdmin();
+  const id = String(formData.get("id"));
+  const product = await prisma.product.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+    include: { _count: { select: { lineItems: true, recipeUses: true, wasteEntries: true } } },
+  });
+  if (!product) throw new Error("Product not found.");
+  const c = product._count;
+  if (c.lineItems > 0 || c.recipeUses > 0 || c.wasteEntries > 0) {
+    redirect(`/products/${id}?error=${encodeURIComponent(`Can't delete ${product.name}: it appears on ${c.lineItems} bill line(s), ${c.recipeUses} recipe(s) and ${c.wasteEntries} waste entr${c.wasteEntries === 1 ? "y" : "ies"}. Delete or correct those first.`)}`);
+  }
+  await prisma.inventoryMovement.deleteMany({ where: { productId: id } });
+  await prisma.product.delete({ where: { id } });
+  await logActivity(user, "DELETE", "Product", id, `Deleted product ${product.name}`);
+  revalidatePurchasePages();
+  redirect("/products");
 }
 
 /** Restaurant profile edits (address, GSTIN...) are admin-level, same as user management. */

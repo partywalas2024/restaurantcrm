@@ -1,6 +1,9 @@
 // Server actions for the revenue side — menu items, recipes, daily sales,
 // labor and waste.
 //
+// Staff (USER) can only add; changing or deleting an existing record is
+// Owner-only (`requireRestaurantAdmin()`).
+//
 // Like the purchase-side actions, every entry point re-checks the session via
 // `requireRestaurantUser()` — server actions are reachable independently of
 // the pages that render them, and this is also the tenant boundary: every
@@ -12,7 +15,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireRestaurantUser } from "@/lib/auth";
+import { requireRestaurantUser, requireRestaurantAdmin } from "@/lib/auth";
 import type { LaborCategory } from "@/generated/prisma/enums";
 
 function revalidateSalesPages() {
@@ -36,7 +39,7 @@ export async function createMenuItem(formData: FormData) {
 }
 
 export async function updateMenuItem(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   const category = (formData.get("category") as string | null) || null;
@@ -52,7 +55,7 @@ export async function updateMenuItem(formData: FormData) {
 }
 
 export async function deleteMenuItem(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const existing = await prisma.menuItem.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Menu item not found.");
@@ -83,7 +86,7 @@ export async function addRecipeIngredient(formData: FormData) {
 }
 
 export async function removeRecipeIngredient(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const menuItemId = String(formData.get("menuItemId"));
   const existing = await prisma.recipeIngredient.findFirst({ where: { id, menuItem: { restaurantId: user.restaurantId } } });
@@ -109,6 +112,11 @@ export async function saveDailySales(formData: FormData) {
   const otherPaymentAmount = Number(formData.get("otherPaymentAmount") || 0);
   const covers = Number(formData.get("covers") || 0);
   const notes = (formData.get("notes") as string | null) || null;
+
+  if (user.role !== "RESTAURANT_ADMIN") {
+    const already = await prisma.dailySales.findUnique({ where: { restaurantId_date: { restaurantId: user.restaurantId, date } } });
+    if (already) throw new Error("Sales for this date already exist — only the owner can change them.");
+  }
 
   const dailySales = await prisma.dailySales.upsert({
     where: { restaurantId_date: { restaurantId: user.restaurantId, date } },
@@ -166,7 +174,7 @@ export async function saveDailySales(formData: FormData) {
 }
 
 export async function deleteDailySales(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const existing = await prisma.dailySales.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Sales record not found.");
@@ -175,7 +183,7 @@ export async function deleteDailySales(formData: FormData) {
 }
 
 export async function recordLaborCost(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const date = new Date(String(formData.get("date")));
   const category = formData.get("category") as LaborCategory;
   const amount = Number(formData.get("amount"));
@@ -189,7 +197,7 @@ export async function recordLaborCost(formData: FormData) {
 }
 
 export async function deleteLaborCost(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const existing = await prisma.laborCost.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Labor cost entry not found.");
@@ -226,7 +234,7 @@ export async function recordWaste(formData: FormData) {
 }
 
 export async function deleteWaste(formData: FormData) {
-  const user = await requireRestaurantUser();
+  const user = await requireRestaurantAdmin();
   const id = String(formData.get("id"));
   const existing = await prisma.wasteEntry.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Waste entry not found.");

@@ -94,7 +94,7 @@ export default async function UsersPage({
                     </td>
                     <td className="py-2.5">
                       <Badge tone={u.role === "RESTAURANT_ADMIN" ? "info" : "neutral"}>
-                        {u.role === "RESTAURANT_ADMIN" ? "Admin" : "User"}
+                        {u.role === "RESTAURANT_ADMIN" ? "Owner" : "Staff"}
                       </Badge>
                     </td>
                     <td className="py-2.5">

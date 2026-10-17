@@ -6,6 +6,8 @@ import { Card, EmptyState } from "@/components/Card";
 import { getAvailableBusinessMonths, getWasteForMonth } from "@/lib/sales";
 import { prisma } from "@/lib/prisma";
 import { requireRestaurantUser } from "@/lib/auth";
+import { isOwner } from "@/lib/roles";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatDate, formatINR } from "@/lib/format";
 import { recordWaste, deleteWaste } from "@/lib/sales-actions";
 
@@ -18,6 +20,7 @@ export default async function WastePage({
 }) {
   const params = await searchParams;
   const user = await requireRestaurantUser();
+  const owner = isOwner(user.role);
   const months = await getAvailableBusinessMonths(user.restaurantId);
   const month = params.month && months.includes(params.month) ? params.month : months[0] ?? new Date().toISOString().slice(0, 7);
   const [waste, products] = await Promise.all([
@@ -52,10 +55,12 @@ export default async function WastePage({
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{formatINR(r.estimatedCost, { decimals: true })}</span>
-                    <form action={deleteWaste}>
-                      <input type="hidden" name="id" value={r.id} />
-                      <button type="submit" className="text-xs text-crit hover:underline">Delete</button>
-                    </form>
+                    {owner && (
+                      <form action={deleteWaste}>
+                        <input type="hidden" name="id" value={r.id} />
+                        <ConfirmButton message="Delete this waste entry?" className="text-xs text-crit hover:underline">Delete</ConfirmButton>
+                      </form>
+                    )}
                   </div>
                 </div>
               ))}

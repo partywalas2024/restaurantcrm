@@ -6,6 +6,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { StockAdjustForm } from "@/components/StockAdjustForm";
 import { getProducts, StockStatus } from "@/lib/data";
 import { requireRestaurantUser } from "@/lib/auth";
+import { isOwner } from "@/lib/roles";
 import { formatDate, formatINR, formatNumber } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { Boxes, AlertTriangle, XCircle, PackagePlus } from "lucide-react";
@@ -34,6 +35,7 @@ export default async function InventoryPage({
   const sp = await searchParams;
   const user = await requireRestaurantUser();
   const products = await getProducts(user.restaurantId);
+  const owner = isOwner(user.role);
 
   const filtered = products.filter((p) => {
     if (sp.category && p.category !== sp.category) return false;
@@ -51,7 +53,7 @@ export default async function InventoryPage({
     <div>
       <PageHeader
         title="Inventory Management"
-        description="Stock levels inferred from net purchases (purchases minus returns) — adjust manually to match a physical count."
+        description="Stock from purchases minus returns, usage and physical counts. Record usage or a count from Consumption to keep it true."
         actions={<ExportButton kind="products" />}
       />
 
@@ -111,7 +113,7 @@ export default async function InventoryPage({
                   <th className="pb-2 pr-3">Last Purchase</th>
                   <th className="pb-2 pr-3">Vendor</th>
                   <th className="pb-2 pr-3">Status</th>
-                  <th className="pb-2">Adjust</th>
+                  <th className="pb-2">{owner ? "Adjust" : "Record"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -130,7 +132,12 @@ export default async function InventoryPage({
                       <Badge tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</Badge>
                     </td>
                     <td className="py-2.5">
-                      <StockAdjustForm productId={p.id} />
+                      <div className="flex items-center gap-3">
+                        {owner && <StockAdjustForm productId={p.id} />}
+                        <Link href={`/consumption/${p.id}`} className="whitespace-nowrap text-xs font-medium text-brand hover:underline">
+                          Use / Count
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -3,10 +3,11 @@ import { UploadCloud, Receipt, TrendingUp, FileSpreadsheet, ArrowRight } from "l
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { requireRestaurantUser } from "@/lib/auth";
+import { isOwner } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
-const OPTIONS = [
+const OPTIONS: { href: string; icon: typeof Receipt; title: string; description: string; ownerOnly?: boolean }[] = [
   {
     href: "/upload",
     icon: Receipt,
@@ -15,12 +16,14 @@ const OPTIONS = [
   },
   {
     href: "/sales/import-reports",
+    ownerOnly: true,
     icon: TrendingUp,
     title: "Sync PetPooja Reports",
     description: "Orders Master, Executive Summary, Day End — any mix of PetPooja's own report exports, synced as daily sales.",
   },
   {
     href: "/sales/import",
+    ownerOnly: true,
     icon: FileSpreadsheet,
     title: "Import Item-wise CSV",
     description: "A generic sales export with a row per dish sold — map its columns once, then import.",
@@ -28,7 +31,8 @@ const OPTIONS = [
 ];
 
 export default async function ImportPage() {
-  await requireRestaurantUser();
+  const user = await requireRestaurantUser();
+  const options = OPTIONS.filter((o) => !o.ownerOnly || isOwner(user.role));
 
   return (
     <div>
@@ -38,7 +42,7 @@ export default async function ImportPage() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {OPTIONS.map((opt) => {
+        {options.map((opt) => {
           const Icon = opt.icon;
           return (
             <Link key={opt.href} href={opt.href} className="block">

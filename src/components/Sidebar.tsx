@@ -27,19 +27,24 @@ import {
   LogOut,
   Building2,
   Contact,
+  Flame,
 } from "lucide-react";
 import { signOutAction } from "@/lib/auth-actions";
 import type { CurrentUser } from "@/lib/auth";
+import { ROLE_LABEL } from "@/lib/roles";
 
-const RESTAURANT_SECTIONS = [
+type NavItem = { href: string; label: string; icon: typeof Receipt; ownerOnly?: boolean };
+
+// ownerOnly items are hidden from Staff (their pages also refuse them server-side).
+const RESTAURANT_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: "Sales & Growth",
     items: [
-      { href: "/", label: "Overview", icon: LayoutDashboard },
+      { href: "/", label: "Overview", icon: LayoutDashboard, ownerOnly: true },
       { href: "/sales", label: "Sales", icon: TrendingUp },
       { href: "/menu", label: "Menu & Recipes", icon: BookOpen },
-      { href: "/profitability", label: "Profitability (P&L)", icon: LineChart },
-      { href: "/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/profitability", label: "Profitability (P&L)", icon: LineChart, ownerOnly: true },
+      { href: "/analytics", label: "Analytics", icon: BarChart3, ownerOnly: true },
     ],
   },
   {
@@ -56,13 +61,14 @@ const RESTAURANT_SECTIONS = [
       { href: "/inventory", label: "Inventory", icon: Boxes },
       { href: "/vendors", label: "Vendors", icon: Truck },
       { href: "/products", label: "Product Catalog", icon: Package },
-      { href: "/balance-sheet", label: "Balance Sheet", icon: Scale },
+      { href: "/consumption", label: "Consumption", icon: Flame },
+      { href: "/balance-sheet", label: "Balance Sheet", icon: Scale, ownerOnly: true },
     ],
   },
   {
     label: "Operations",
     items: [
-      { href: "/labor", label: "Labor Cost", icon: Users },
+      { href: "/labor", label: "Labor Cost", icon: Users, ownerOnly: true },
       { href: "/waste", label: "Waste & Spoilage", icon: Trash2 },
     ],
   },
@@ -84,6 +90,7 @@ function isActive(pathname: string, href: string) {
 function NavLinks({ role, onNavigate }: { role: CurrentUser["role"]; onNavigate?: () => void }) {
   const pathname = usePathname();
   const isSuperAdmin = role === "SUPER_ADMIN";
+  const staff = role === "USER";
   const sections = isSuperAdmin
     ? PLATFORM_SECTIONS
     : role === "RESTAURANT_ADMIN"
@@ -92,6 +99,12 @@ function NavLinks({ role, onNavigate }: { role: CurrentUser["role"]; onNavigate?
           { href: "/activity", label: "Activity Log", icon: History },
         ] }]
       : RESTAURANT_SECTIONS;
+  const visibleSections = sections
+    .map((section) => ({
+      ...section,
+      items: (section.items as NavItem[]).filter((item) => !(staff && item.ownerOnly)),
+    }))
+    .filter((section) => section.items.length > 0);
   return (
     <nav className="flex flex-1 flex-col gap-4 px-3">
       {!isSuperAdmin && (
@@ -108,7 +121,7 @@ function NavLinks({ role, onNavigate }: { role: CurrentUser["role"]; onNavigate?
           Import
         </Link>
       )}
-      {sections.map((section) => (
+      {visibleSections.map((section) => (
         <div key={section.label}>
           <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">{section.label}</p>
           <div className="flex flex-col gap-1">
@@ -149,12 +162,6 @@ function NavLinks({ role, onNavigate }: { role: CurrentUser["role"]; onNavigate?
     </nav>
   );
 }
-
-const ROLE_LABEL: Record<CurrentUser["role"], string | null> = {
-  SUPER_ADMIN: "Partywalas Admin",
-  RESTAURANT_ADMIN: "Admin",
-  USER: null,
-};
 
 function UserFooter({ user }: { user: CurrentUser }) {
   const roleLabel = ROLE_LABEL[user.role];

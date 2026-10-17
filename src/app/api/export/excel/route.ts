@@ -52,6 +52,10 @@ export async function GET(req: NextRequest) {
 
   const sp = req.nextUrl.searchParams;
   const kind = sp.get("kind") ?? "bills";
+  // Profit-level exports are Owner-only; staff can still export bills, vendors, products and ledgers.
+  if (["overview", "analytics", "balance-sheet"].includes(kind) && user.role !== "RESTAURANT_ADMIN") {
+    return NextResponse.json({ error: "Only the owner can export this report." }, { status: 403 });
+  }
   const wb = newWorkbook();
   const profile = await getRestaurant(user.restaurantId);
   const filePrefix = profile.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
