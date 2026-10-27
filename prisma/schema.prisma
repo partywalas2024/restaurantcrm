@@ -94,6 +94,7 @@ model Restaurant {
   stockCounts    StockCount[]
   expenses       Expense[]
   statements     ExpenseStatement[]
+  cashReceipts   CashReceipt[]
 }
 
 model Vendor {
@@ -496,6 +497,30 @@ model Expense {
   @@index([restaurantId])
   @@index([date])
   @@index([statementId])
+}
+
+// ---- Cash received ----
+// Cash coming in that is NOT already a daily-sales entry: party/event advances,
+// deposits, an owner top-up, a customer settling a credit sale. Cash from daily
+// sales is read straight from DailySales.cashAmount, so it is never entered
+// twice. `kind` is a plain string (labels live in code) to avoid enum churn.
+model CashReceipt {
+  id            String   @id @default(cuid())
+  restaurantId  String
+  date          DateTime
+  amount        Float
+  kind          String   @default("OTHER")
+  receivedFrom  String?
+  description   String
+  explanation   String?
+  reference     String?
+  createdByName String
+  createdAt     DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([date])
 }
 
 // ---- Access control ----

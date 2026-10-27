@@ -92,7 +92,11 @@ export function MenuItemBuilder({ products }: { products: Product[] }) {
                 </div>
                 <div className="col-span-4 sm:col-span-2">
                   {p ? (
-                    <p className="px-1 py-1.5 text-sm text-muted">{p.unit}</p>
+                    <>
+                      <p className="px-1 py-1.5 text-sm text-muted">{p.unit}</p>
+                      {/* Every row must submit newUnit so the parallel form arrays stay aligned. */}
+                      <input type="hidden" name="newUnit" value="" />
+                    </>
                   ) : typed ? (
                     <input name="newUnit" value={r.newUnit} onChange={(e) => patch(r.key, { newUnit: e.target.value })} placeholder="Unit" aria-label="Unit for new ingredient" className={INPUT} />
                   ) : (

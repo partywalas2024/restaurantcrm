@@ -37,9 +37,14 @@ export default async function ProductConsumptionPage({ params }: { params: Promi
         title={product.name}
         description={`${CATEGORY_LABELS[product.category]} · measured in ${product.unit}${product.vendor ? ` · usually from ${product.vendor.name}` : ""}`}
         actions={
-          <Link href={`/products/${product.id}`} className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
-            Product details
-          </Link>
+          <>
+            <Link href={`/ledger?product=${product.id}`} className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
+              Full ledger
+            </Link>
+            <Link href={`/products/${product.id}`} className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
+              Product details
+            </Link>
+          </>
         }
       />
 

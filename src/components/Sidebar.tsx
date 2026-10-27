@@ -29,6 +29,8 @@ import {
   Contact,
   Flame,
   Banknote,
+  Coins,
+  ScrollText,
 } from "lucide-react";
 import { signOutAction } from "@/lib/auth-actions";
 import type { CurrentUser } from "@/lib/auth";
@@ -60,9 +62,11 @@ const RESTAURANT_SECTIONS: { label: string; items: NavItem[] }[] = [
       { href: "/bills", label: "Bills & Purchases", icon: Receipt },
       { href: "/expenses", label: "Expenses", icon: Wallet },
       { href: "/expenses/cash", label: "Cash Expenses", icon: Banknote },
+      { href: "/cash", label: "Cash Book", icon: Coins },
       { href: "/inventory", label: "Inventory", icon: Boxes },
       { href: "/vendors", label: "Vendors", icon: Truck },
       { href: "/products", label: "Product Catalog", icon: Package },
+      { href: "/ledger", label: "Product Ledger", icon: ScrollText },
       { href: "/consumption", label: "Consumption", icon: Flame },
       { href: "/balance-sheet", label: "Balance Sheet", icon: Scale, ownerOnly: true },
     ],

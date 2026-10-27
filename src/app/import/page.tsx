@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UploadCloud, Receipt, TrendingUp, FileSpreadsheet, ArrowRight, Landmark } from "lucide-react";
+import { UploadCloud, Receipt, TrendingUp, FileSpreadsheet, ArrowRight, Landmark, PenLine } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { requireRestaurantUser } from "@/lib/auth";
@@ -13,6 +13,12 @@ const OPTIONS: { href: string; icon: typeof Receipt; title: string; description:
     icon: Receipt,
     title: "Upload Bills",
     description: "Scan a vendor bill (PDF or photo) — every figure is read, checked and shown to you before it's saved.",
+  },
+  {
+    href: "/bills/new",
+    icon: PenLine,
+    title: "Enter a Bill Manually",
+    description: "No file to scan? Type the vendor, bill number and each item yourself. It updates stock, expenses and the vendor ledger exactly like an uploaded bill.",
   },
   {
     href: "/sales/import-reports",

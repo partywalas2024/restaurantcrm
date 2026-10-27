@@ -41,9 +41,14 @@ export default async function ProductDetailPage({
         title={product.name}
         description={`${CATEGORY_LABELS[product.category]} · ${product.unit}`}
         actions={
-          <Link href={`/consumption/${product.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
-            Consumption &amp; stock count
-          </Link>
+          <>
+            <Link href={`/ledger?product=${product.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
+              Full ledger
+            </Link>
+            <Link href={`/consumption/${product.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted">
+              Consumption &amp; stock count
+            </Link>
+          </>
         }
       />
       {error && <p className="mb-4 rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">{error}</p>}
