@@ -58,7 +58,12 @@ Sales ──► MenuItemSale ──► MenuItem ──► RecipeIngredient ─�
 | **Vendors** | Vendor list, per-vendor ledger, payment recording, PDF receipts |
 | **Balance Sheet** | Stock value against outstanding payables |
 | **Upload Bills** | Reads a PDF or photo of bills via OpenAI, re-checks the arithmetic, and shows everything for editing and approval before saving |
-| **Add Bill** | Enter a bill by hand when there's no document to scan |
+| **Add Bill** | Enter a bill by hand (vendor name plus any number of item rows) when there's no document to scan; also reachable from the Import page |
+| **Cash Expenses** | Record cash/UPI/bank spend that isn't a vendor bill (rent, repairs, tips, petty cash), each with a category, who it was paid to, a description and an explanation. Owner-only edit/delete |
+| **Bank / UPI Statement Import** (Owner) | Upload a bank statement as CSV, PDF or photo (PDF/photo read via OpenAI). Rows are previewed with a suggested category; vendor payments and rows already imported are auto-unticked; the whole import can be undone |
+| **Cash Book** | One register of all cash movement: cash sales and manual cash receipts in, cash expenses and cash vendor payments out, with opening, running and closing balance. Filters by dates, direction, type, party, amount and text; exports to CSV |
+| **Product Ledger** | One product's full history across dates: purchases, returns, kitchen usage, stock counts and waste, with vendor, rate, amount, running stock and a purchases-by-month table. With no product chosen it shows a summary of every product |
+| **Menu + Recipe Builder** | Create a dish and its recipe in one step; ingredients are picked from existing products or created inline, with live cost and margin. Recipes drive consumption tracking |
 | **Consumption** | Per product: bought (bills) vs used (staff-logged) vs wasted vs what recipes expect, plus physical stock counts; flags over-use and missing stock, shows price history and days of stock left |
 | **Users & Access** | Restaurant-admin-managed accounts, scoped to that restaurant (no public sign-up) |
 | **Platform → Restaurants** (SUPER_ADMIN only) | Create restaurants, assign their first admin, activate/deactivate — no business data visible here |
@@ -100,7 +105,8 @@ DATABASE_URL="file:./dev.db"
 # Generate with: openssl rand -base64 48
 SESSION_SECRET="..."
 
-# Only needed for the Upload Bills page. Everything else works without it.
+# Needed for Upload Bills and for PDF/photo bank statements.
+# CSV statements and everything else work without it.
 OPENAI_API_KEY=""
 
 # Optional — override the model used to read bills (default: gpt-5.5)
@@ -128,6 +134,9 @@ src/
 │   ├── users/            Restaurant-admin-only account management
 │   ├── sales/ menu/ profitability/ labor/ waste/      Revenue side
 │   ├── bills/ expenses/ inventory/ vendors/ products/ Purchase side
+│   ├── expenses/cash/    Cash expenses + bank/UPI statement import
+│   ├── cash/ ledger/     Cash Book and per-product Product Ledger
+│   ├── consumption/ guests/ import/
 │   ├── balance-sheet/ analytics/ settings/ upload/
 │   └── api/              Route handlers: exports, uploads, imports
 ├── lib/
@@ -135,7 +144,15 @@ src/
 │   ├── data.ts           Read model — purchases, vendors, inventory, ledger
 │   ├── sales.ts          Read model — sales, menu costing, P&L
 │   ├── actions.ts        Server actions — purchase side
-│   ├── sales-actions.ts  Server actions — revenue side
+│   ├── sales-actions.ts  Server actions — revenue side (incl. menu + recipe builder)
+│   ├── expenses.ts       Read model — cash expenses and statement imports
+│   ├── expense-actions.ts Server actions — create (staff), edit/delete/undo (owner)
+│   ├── statement.ts      Bank/UPI statement parsing, category guess, duplicate flags
+│   ├── openai-statement.ts PDF/photo statement → rows, via OpenAI
+│   ├── cashbook.ts       Read model — Cash Book (union of four cash sources)
+│   ├── cash-actions.ts   Server actions — manual cash receipts
+│   ├── ledger.ts         Read model — Product Ledger and per-product summary
+│   ├── consumption.ts    Read model — consumption overview and per-product detail
 │   ├── auth.ts           Session cookies; requireUser/requireRestaurantUser/
 │   │                     requireRestaurantAdmin/requireSuperAdmin guards
 │   ├── auth-actions.ts   Sign-in, sign-out, user administration, restaurant
@@ -202,12 +219,13 @@ Defined in [`prisma/schema.prisma`](prisma/schema.prisma). The main entities:
 
 **Tenant** — `Restaurant` (name, address, GSTIN, `isActive`)
 **Purchases** — `Vendor`, `Bill`, `BillLineItem`, `Product`, `InventoryMovement`, `Payment`
+**Cash & Expenses** — `Expense`, `ExpenseStatement`, `CashReceipt`
 **Revenue** — `MenuItem`, `RecipeIngredient`, `DailySales`, `MenuItemSale`
 **Operations** — `LaborCost`, `WasteEntry`, `StockCount`
 **System** — `User`, `ActivityLog`
 
-`Vendor`, `Product`, `Bill`, `MenuItem`, `DailySales`, `LaborCost` and
-`WasteEntry` each carry a required `restaurantId`. `Payment`, `BillLineItem`,
+`Vendor`, `Product`, `Bill`, `MenuItem`, `DailySales`, `LaborCost`,
+`WasteEntry`, `Expense`, `ExpenseStatement` and `CashReceipt` each carry a required `restaurantId`. `Payment`, `BillLineItem`,
 `InventoryMovement`, `RecipeIngredient` and `MenuItemSale` deliberately don't
 duplicate it — they're scoped through their parent relation (e.g.
 `bill: { restaurantId }`) so there's no second copy of the tenant id to drift.
@@ -242,6 +260,19 @@ duplicate it — they're scoped through their parent relation (e.g.
   "SHANKER LAL SURESH KUMAR" on one bill and "Shanker Lal Suresh Kumar" on
   another would otherwise open two accounts and split the ledger.
   `npm run merge-vendors` repairs records already split that way.
+- **The Cash Book only knows what was recorded.** Its opening balance is the net
+  of every recorded entry before the start date, not a counted figure. Cash IN is
+  the cash column of Daily Sales plus manual cash receipts; cash OUT is cash
+  expenses plus vendor payments made in cash. UPI/bank expenses are excluded. A
+  missing sales day or receipt makes the balance wrong by exactly that amount.
+- **Cash expenses reduce profit; bills for food do not double count.** Recorded
+  expenses flow into the P&L as operating expense (`getOperatingExpenseTotal`).
+  Statement rows that are payments to a known vendor are flagged and unticked so
+  a bill already in the system is not counted twice.
+- **The Product Ledger's running stock is anchored to today.** It is worked
+  backwards from the product's current stock, so the last row always matches the
+  stock shown elsewhere. Waste rows are shown as memo lines because waste does
+  not change stock in this app.
 - **Non-food purchases become operating expenses**; food purchases do not, since
   ingredient cost already reaches the P&L through recipes. `NON_FOOD_CATEGORIES`
   is derived from `FOOD_CATEGORIES` so a category added later cannot fall
@@ -268,11 +299,13 @@ purchase data — new bills come in through **Upload Bills**.
 
 ## Deployment
 
-Runs on AWS EC2 under PM2, behind Nginx with a Let's Encrypt certificate.
+Runs on an AWS Lightsail instance (Ubuntu, Node 22, 2 GB swap) under PM2,
+behind Nginx with a Let's Encrypt certificate; a systemd timer
+(`restaurantcrm-backup.service`) snapshots `dev.db` to `/var/backups/restaurantcrm`.
 Deploys are rsync-based — the server has no git access.
 
 ```bash
-rsync -az --delete -e "ssh -i ~/.ssh/restaurantcrm_deploy" \
+rsync -az --delete -e "ssh -4 -i ~/.ssh/id_ed25519" \
   --exclude node_modules --exclude .next --exclude .git \
   --exclude .env --exclude 'dev.db*' \
   ./ ubuntu@<host>:/var/www/restaurantcrm/
@@ -285,7 +318,10 @@ Then on the server: `npm install`, `npx prisma generate`, `npx prisma db push`,
 > copy of the real business records, and the server has its own `SESSION_SECRET`.
 > A careless sync overwrites both.
 
-Back up `dev.db` on the server before any schema change.
+Back up `dev.db` on the server before any schema change
+(`sudo systemctl start restaurantcrm-backup.service`). The Cash Expenses, Cash
+Book and statement-import features added the `Expense`, `ExpenseStatement` and
+`CashReceipt` tables; all schema changes so far have been additive.
 
 ---
 

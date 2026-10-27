@@ -132,6 +132,22 @@ Purchases and sales are two independent data feeds that meet at the P&L through 
 | Flags: stock missing, over recipe, usage not logged; days-of-stock-left with stated basis | ✅ Live |
 | Purchase price history and swing per product | ✅ Live |
 
+### 4.5c Cash, expenses and ledgers
+
+| Requirement | Status |
+|---|---|
+| Enter a bill by hand (vendor name + items) without scanning; discoverable from Import | ✅ Live |
+| Cash expense entry with category, paid-to, payment method, description and explanation; staff add, owner edit/delete | ✅ Live |
+| Import a bank/UPI statement (CSV, or PDF/photo via OpenAI) with category suggestions, vendor-payment and duplicate detection, explanation per row, and undo | ✅ Live (owner only; PDF/photo path not yet exercised against real statements) |
+| Recorded expenses included in the P&L as operating expense | ✅ Live |
+| Cash Book: cash sales + manual cash receipts in; cash expenses + cash vendor payments out; opening/running/closing balance | ✅ Live |
+| Cash Book filters (dates, direction, type, party, amount, text) and CSV export | ✅ Live |
+| Manual cash receipts (party advance, deposit, owner top-up, customer payment, other) with description and explanation; staff add, owner edit/delete | ✅ Live |
+| Product Ledger: purchases, returns, usage, counts and waste per product across dates, running stock, monthly purchase totals, filters (dates, vendor, type, text) | ✅ Live |
+| All-products ledger summary with category/date/vendor/name filters | ✅ Live |
+| One-step menu item + recipe builder with inline ingredient creation and live cost/margin | ✅ Live |
+| Only the Owner can delete or change entries; staff can add only | ✅ Live |
+
 ### 4.6 Platform (Partywalas)
 
 | Requirement | Status |
@@ -165,4 +181,5 @@ See `docs/AUDIT.md` for the full feature audit. Highest-priority open items:
 
 1. **Correct the 2 flagged legacy bills** (A001579, A000886) — data fix, not code, needs the paper originals.
 2. **Rotate the OpenAI API key** — pasted into chat during setup, should be treated as compromised.
-3. **SQLite → networked database** — acceptable at current scale; blocks running more than one app instance.
+3. **Exercise the PDF/photo bank-statement import** against real statements, and add a counted opening balance to the Cash Book so it can be reconciled against physical cash.
+4. **SQLite → networked database** — acceptable at current scale; blocks running more than one app instance.
