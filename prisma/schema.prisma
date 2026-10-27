@@ -92,6 +92,8 @@ model Restaurant {
   customers      Customer[]
   customerVisits CustomerVisit[]
   stockCounts    StockCount[]
+  expenses       Expense[]
+  statements     ExpenseStatement[]
 }
 
 model Vendor {
@@ -445,6 +447,55 @@ model StockCount {
   @@index([restaurantId])
   @@index([productId])
   @@index([date])
+}
+
+// ---- Cash & statement expenses ----
+// Money paid out that is not a vendor bill: petty cash, repairs, transport,
+// staff tea, gas cylinders... or debits imported from a bank/UPI statement.
+// `description` says WHAT it was; `explanation` says WHY, for later reference
+// (e.g. "plumber for the kitchen drain, approved by owner"). Expenses in
+// non-food categories count as operating expenses on the P&L. Vendor
+// payments belong in the vendor ledger instead, or they would be counted
+// twice (once as the bill, once as the expense).
+model ExpenseStatement {
+  id               String    @id @default(cuid())
+  restaurantId     String
+  fileName         String
+  importedByName   String
+  periodFrom       DateTime?
+  periodTo         DateTime?
+  transactionCount Int
+  totalAmount      Float
+  createdAt        DateTime  @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  expenses   Expense[]
+
+  @@index([restaurantId])
+}
+
+model Expense {
+  id            String          @id @default(cuid())
+  restaurantId  String
+  date          DateTime
+  amount        Float
+  category      ProductCategory @default(OTHER)
+  paymentMethod PaymentMethod   @default(CASH)
+  paidTo        String?
+  description   String
+  explanation   String?
+  reference     String?
+  source        String          @default("MANUAL")
+  statementId   String?
+  createdByName String
+  createdAt     DateTime        @default(now())
+
+  restaurant Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  statement  ExpenseStatement? @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([date])
+  @@index([statementId])
 }
 
 // ---- Access control ----

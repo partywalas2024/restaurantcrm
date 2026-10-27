@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UploadCloud, Receipt, TrendingUp, FileSpreadsheet, ArrowRight } from "lucide-react";
+import { UploadCloud, Receipt, TrendingUp, FileSpreadsheet, ArrowRight, Landmark } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { requireRestaurantUser } from "@/lib/auth";
@@ -20,6 +20,13 @@ const OPTIONS: { href: string; icon: typeof Receipt; title: string; description:
     icon: TrendingUp,
     title: "Sync PetPooja Reports",
     description: "Orders Master, Executive Summary, Day End — any mix of PetPooja's own report exports, synced as daily sales.",
+  },
+  {
+    href: "/expenses/cash/import",
+    ownerOnly: true,
+    icon: Landmark,
+    title: "Import Bank / UPI Statement",
+    description: "Read the debits from a bank or UPI statement (CSV, PDF or photo), tag each with a category and a reason, and save them as expenses.",
   },
   {
     href: "/sales/import",

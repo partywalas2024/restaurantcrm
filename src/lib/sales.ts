@@ -13,6 +13,7 @@
 import { prisma } from "@/lib/prisma";
 import { monthKey } from "@/lib/format";
 import { NON_FOOD_CATEGORIES } from "@/lib/categories";
+import { getOperatingExpenseTotal } from "@/lib/expenses";
 
 function monthRange(month: string) {
   const [y, m] = month.split("-").map(Number);
@@ -29,11 +30,16 @@ export async function getAvailableSalesMonths(restaurantId: string): Promise<str
 
 /** Union of months that have either sales or purchase data — used by pages (like P&L) that need both. */
 export async function getAvailableBusinessMonths(restaurantId: string): Promise<string[]> {
-  const [bills, sales] = await Promise.all([
+  const [bills, sales, expenses] = await Promise.all([
     prisma.bill.findMany({ where: { restaurantId }, select: { date: true } }),
     prisma.dailySales.findMany({ where: { restaurantId }, select: { date: true } }),
+    prisma.expense.findMany({ where: { restaurantId }, select: { date: true } }),
   ]);
-  const set = new Set([...bills.map((b) => monthKey(b.date)), ...sales.map((s) => monthKey(s.date))]);
+  const set = new Set([
+    ...bills.map((b) => monthKey(b.date)),
+    ...sales.map((s) => monthKey(s.date)),
+    ...expenses.map((e) => monthKey(e.date)),
+  ]);
   return Array.from(set).sort().reverse();
 }
 
@@ -258,7 +264,7 @@ export function projectNextValue(
 
 export async function getProfitAndLoss(restaurantId: string, month: string) {
   const { start, end } = monthRange(month);
-  const [sales, menuPerf, labor, otherOpexLines, waste] = await Promise.all([
+  const [sales, menuPerf, labor, otherOpexLines, waste, cashOpex] = await Promise.all([
     getSalesForMonth(restaurantId, month),
     getMenuItemPerformance(restaurantId, month),
     getLaborCostForMonth(restaurantId, month),
@@ -270,12 +276,14 @@ export async function getProfitAndLoss(restaurantId: string, month: string) {
       select: { amount: true },
     }),
     getWasteForMonth(restaurantId, month),
+    getOperatingExpenseTotal(restaurantId, month),
   ]);
 
   const revenue = sales.totalRevenue;
   const cogs = menuPerf.reduce((s, m) => s + m.cost, 0);
   const itemsWithRecipe = menuPerf.filter((m) => m.hasRecipe).length;
-  const otherOpex = otherOpexLines.reduce((s, l) => s + l.amount, 0);
+  // Non-food bill lines plus cash/statement expenses (rent-like, repairs, transport...).
+  const otherOpex = otherOpexLines.reduce((s, l) => s + l.amount, 0) + cashOpex;
   const laborCost = labor.total;
   const grossProfit = revenue - cogs;
   const operatingProfit = grossProfit - laborCost - otherOpex;

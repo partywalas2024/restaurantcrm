@@ -16,6 +16,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRestaurantUser, requireRestaurantAdmin } from "@/lib/auth";
+import { logActivity } from "@/lib/activity-log";
+import { normalizeProductName } from "@/lib/normalize";
+import { inferCategory } from "@/lib/categories";
 import type { LaborCategory } from "@/generated/prisma/enums";
 
 function revalidateSalesPages() {
@@ -26,15 +29,101 @@ function revalidateSalesPages() {
   revalidatePath("/analytics");
 }
 
-export async function createMenuItem(formData: FormData) {
+export type MenuFormState = { error?: string };
+
+/**
+ * Creates a dish and its whole recipe in one go. Ingredients are existing
+ * products, or — so a recipe doesn't have to wait for the first purchase — new
+ * ones typed in by name (created with zero stock and zero cost; the cost fills
+ * in from the first bill that matches the same normalized name).
+ */
+export async function createMenuItemWithRecipe(_prev: MenuFormState, formData: FormData): Promise<MenuFormState> {
   const user = await requireRestaurantUser();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) throw new Error("Menu item name is required.");
-  const category = (formData.get("category") as string | null) || null;
+  const category = String(formData.get("category") ?? "").trim() || null;
   const sellingPrice = Number(formData.get("sellingPrice") ?? 0);
 
-  const item = await prisma.menuItem.create({ data: { restaurantId: user.restaurantId, name, category, sellingPrice } });
+  if (!name) return { error: "Give the dish a name." };
+  if (!Number.isFinite(sellingPrice) || sellingPrice < 0) return { error: "Selling price must be zero or more." };
+
+  const existingNames = await prisma.menuItem.findMany({ where: { restaurantId: user.restaurantId }, select: { name: true } });
+  const key = (n: string) => n.trim().toLowerCase().replace(/\s+/g, " ");
+  const clash = existingNames.find((m) => key(m.name) === key(name));
+  if (clash) return { error: `"${clash.name}" is already on the menu. Open it from Menu & Recipes to change its recipe.` };
+
+  const productIds = formData.getAll("productId").map(String);
+  const newNames = formData.getAll("newName").map(String);
+  const newUnits = formData.getAll("newUnit").map(String);
+  const quantities = formData.getAll("quantity").map((q) => Number(q));
+
+  type Line = { productId: string | null; newName: string; newUnit: string; quantity: number };
+  const lines: Line[] = [];
+  for (let i = 0; i < productIds.length; i++) {
+    const productId = productIds[i] || null;
+    const newName = (newNames[i] ?? "").trim();
+    if (!productId && !newName) continue; // blank row left behind
+    const quantity = quantities[i];
+    if (!Number.isFinite(quantity) || quantity <= 0) return { error: `Enter a quantity above zero for "${newName || "each ingredient"}".` };
+    lines.push({ productId, newName, newUnit: (newUnits[i] ?? "").trim(), quantity });
+  }
+
+  const owned = await prisma.product.findMany({
+    where: { restaurantId: user.restaurantId },
+    select: { id: true, name: true, unit: true },
+  });
+  const byId = new Map(owned.map((p) => [p.id, p]));
+  const byNormalized = new Map(owned.map((p) => [normalizeProductName(p.name), p]));
+
+  const resolved: { productId: string | null; create: { name: string; unit: string } | null; unit: string; quantity: number }[] = [];
+  const seen = new Set<string>();
+  for (const l of lines) {
+    if (l.productId) {
+      const p = byId.get(l.productId);
+      if (!p) return { error: "One of the ingredients doesn't exist any more — reload the page and pick it again." };
+      if (seen.has(p.id)) return { error: `"${p.name}" is listed twice — add it once with the combined quantity.` };
+      seen.add(p.id);
+      resolved.push({ productId: p.id, create: null, unit: p.unit, quantity: l.quantity });
+    } else {
+      const normalized = normalizeProductName(l.newName);
+      const match = byNormalized.get(normalized);
+      if (match) {
+        if (seen.has(match.id)) return { error: `"${match.name}" is listed twice — add it once with the combined quantity.` };
+        seen.add(match.id);
+        resolved.push({ productId: match.id, create: null, unit: match.unit, quantity: l.quantity });
+      } else {
+        if (!l.newUnit) return { error: `Enter a unit (KG, L, PCS...) for the new ingredient "${l.newName}".` };
+        if (seen.has(`new:${normalized}`)) return { error: `"${l.newName}" is listed twice — add it once with the combined quantity.` };
+        seen.add(`new:${normalized}`);
+        resolved.push({ productId: null, create: { name: normalized, unit: l.newUnit.toUpperCase() }, unit: l.newUnit.toUpperCase(), quantity: l.quantity });
+      }
+    }
+  }
+
+  const item = await prisma.$transaction(async (tx) => {
+    const created = await tx.menuItem.create({ data: { restaurantId: user.restaurantId, name, category, sellingPrice } });
+    for (const r of resolved) {
+      let productId = r.productId;
+      if (!productId && r.create) {
+        const product = await tx.product.create({
+          data: { restaurantId: user.restaurantId, name: r.create.name, unit: r.create.unit, category: inferCategory(r.create.name) },
+        });
+        productId = product.id;
+      }
+      await tx.recipeIngredient.create({ data: { menuItemId: created.id, productId: productId!, quantity: r.quantity, unit: r.unit } });
+    }
+    return created;
+  });
+
+  const newCount = resolved.filter((r) => r.create).length;
+  await logActivity(
+    user,
+    "CREATE",
+    "MenuItem",
+    item.id,
+    `Added menu item ${name} (Rs. ${sellingPrice.toFixed(2)}) with ${resolved.length} ingredient(s)${newCount ? `, ${newCount} new` : ""}`,
+  );
   revalidateSalesPages();
+  revalidatePath("/products");
   redirect(`/menu/${item.id}`);
 }
 

@@ -7,6 +7,8 @@ import { BarList } from "@/components/charts/BarList";
 import { ExportButton } from "@/components/ExportButton";
 import { getAvailableMonths, getOverview } from "@/lib/data";
 import { requireRestaurantUser } from "@/lib/auth";
+import { getExpensesForMonth } from "@/lib/expenses";
+import Link from "next/link";
 import { formatINR, formatMonth, pctChange } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { Wallet, TrendingDown, TrendingUp, Layers } from "lucide-react";
@@ -31,7 +33,7 @@ export default async function ExpensesPage({
   }
 
   const month = params.month && months.includes(params.month) ? params.month : months[0];
-  const overview = await getOverview(user.restaurantId, month);
+  const [overview, cash] = await Promise.all([getOverview(user.restaurantId, month), getExpensesForMonth(user.restaurantId, month)]);
   const change = pctChange(overview.totalSpend, overview.prevSpend);
 
   const sortedCategories = [...overview.categorySpend].sort((a, b) => b.amount - a.amount);
@@ -62,6 +64,18 @@ export default async function ExpensesPage({
         />
         <StatCard label="Categories Active" value={sortedCategories.length} icon={Layers} tone="info" />
       </div>
+
+      <Link href={`/expenses/cash?month=${month}`} className="mt-6 block">
+        <Card className="transition-colors hover:border-brand/40">
+          <p className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span>
+              <strong>Cash &amp; other expenses this month:</strong> {formatINR(cash.total)} across {cash.rows.length} entr{cash.rows.length === 1 ? "y" : "ies"}
+              <span className="text-muted"> — petty cash, repairs, transport, statement imports (not included in the vendor-bill totals above)</span>
+            </span>
+            <span className="text-xs font-medium text-brand">View &amp; add →</span>
+          </p>
+        </Card>
+      </Link>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Category Split">

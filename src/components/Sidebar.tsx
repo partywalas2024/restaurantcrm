@@ -28,6 +28,7 @@ import {
   Building2,
   Contact,
   Flame,
+  Banknote,
 } from "lucide-react";
 import { signOutAction } from "@/lib/auth-actions";
 import type { CurrentUser } from "@/lib/auth";
@@ -58,6 +59,7 @@ const RESTAURANT_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/bills", label: "Bills & Purchases", icon: Receipt },
       { href: "/expenses", label: "Expenses", icon: Wallet },
+      { href: "/expenses/cash", label: "Cash Expenses", icon: Banknote },
       { href: "/inventory", label: "Inventory", icon: Boxes },
       { href: "/vendors", label: "Vendors", icon: Truck },
       { href: "/products", label: "Product Catalog", icon: Package },
@@ -84,7 +86,10 @@ const PLATFORM_SECTIONS = [
 ];
 
 function isActive(pathname: string, href: string) {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  if (href === "/") return pathname === "/";
+  // "/expenses" must not light up while on "/expenses/cash".
+  if (href === "/expenses") return pathname === "/expenses";
+  return pathname.startsWith(href);
 }
 
 function NavLinks({ role, onNavigate }: { role: CurrentUser["role"]; onNavigate?: () => void }) {
