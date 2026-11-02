@@ -29,9 +29,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (session && isPublic) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
+  // Do NOT bounce cookie-bearing visitors off /signin based on the JWT alone.
+  // After a DB import/reset the token can still decrypt while the user row is
+  // gone; redirecting to / then back to /signin loops forever. The sign-in
+  // page redirects only when getCurrentUser() finds a real account.
 
   return NextResponse.next();
 }

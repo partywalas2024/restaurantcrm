@@ -45,3 +45,5 @@ next-env.d.ts
 # local database (contains real business data — never commit)
 *.db
 *.db-journal
+production-dev.db
+production-dev.db-*

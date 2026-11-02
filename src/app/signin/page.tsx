@@ -1,13 +1,20 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { UtensilsCrossed } from "lucide-react";
 import { SignInForm } from "@/components/SignInForm";
+import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 // Branding here is the platform, not a restaurant — the account signing in
 // could belong to any restaurant on Partywalas, or be the platform admin
 // itself, so there is no single restaurant name to show before login.
-export default function SignInPage() {
+export default async function SignInPage() {
+  const user = await getCurrentUser();
+  if (user) {
+    redirect(user.role === "SUPER_ADMIN" ? "/platform" : "/");
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
