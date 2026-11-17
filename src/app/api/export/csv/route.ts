@@ -50,7 +50,13 @@ export async function GET(req: NextRequest) {
     }));
     filename = `${filePrefix}-bills.csv`;
   } else if (kind === "vendors") {
-    const vendors = await getVendors(user.restaurantId);
+    const pending = sp.get("pending");
+    const vendors = await getVendors(user.restaurantId, {
+      search: sp.get("search") || undefined,
+      pending: pending === "due" || pending === "clear" ? pending : undefined,
+      from: sp.get("from") || undefined,
+      to: sp.get("to") || undefined,
+    });
     rows = vendors.map((v) => ({
       Vendor: v.name,
       Phone: v.phone ?? "",

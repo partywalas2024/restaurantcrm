@@ -294,7 +294,15 @@ export async function getBillById(restaurantId: string, id: string) {
   });
 }
 
-export async function getVendors(restaurantId: string) {
+export type VendorFilters = {
+  search?: string;
+  /** "due" = has pending balance; "clear" = nothing owed */
+  pending?: "due" | "clear";
+  from?: string;
+  to?: string;
+};
+
+export async function getVendors(restaurantId: string, filters?: VendorFilters) {
   const [vendors, payable] = await Promise.all([
     prisma.vendor.findMany({
       where: { restaurantId },
@@ -306,6 +314,10 @@ export async function getVendors(restaurantId: string) {
     getAccountsPayable(restaurantId),
   ]);
   const payableByVendor = new Map(payable.map((p) => [p.vendorId, p.balance]));
+
+  const search = filters?.search?.trim().toLowerCase();
+  const fromDate = filters?.from ? new Date(filters.from) : null;
+  const toDate = filters?.to ? new Date(new Date(filters.to).getTime() + 86400000) : null;
 
   return vendors
     .map((v) => {
@@ -332,6 +344,20 @@ export async function getVendors(restaurantId: string) {
         pendingAmount: payableByVendor.get(v.id) ?? 0,
         lastOrderDate: lastOrder?.date ?? null,
       };
+    })
+    .filter((v) => {
+      if (search) {
+        const haystack = [v.name, v.phone ?? "", v.address ?? "", v.gstin ?? ""].join(" ").toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+      if (filters?.pending === "due" && v.pendingAmount <= 0.005) return false;
+      if (filters?.pending === "clear" && v.pendingAmount > 0.005) return false;
+      if (fromDate || toDate) {
+        if (!v.lastOrderDate) return false;
+        if (fromDate && v.lastOrderDate < fromDate) return false;
+        if (toDate && v.lastOrderDate >= toDate) return false;
+      }
+      return true;
     })
     .sort((a, b) => b.totalAmount - a.totalAmount);
 }
