@@ -29,7 +29,10 @@ export default async function SalesEntryPage({
       <Link href="/sales" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand">
         <ArrowLeft size={14} /> Back to sales
       </Link>
-      <PageHeader title={existing ? `Edit Sales — ${dateStr}` : "Add Sales Entry"} description="Revenue, payment mix, and (optionally) item-wise quantities sold for the day." />
+      <PageHeader
+        title={existing ? `Edit Sales — ${dateStr}` : "Add Sales Entry"}
+        description="Revenue, payment mix, and item-wise quantities. Item quantities with recipes auto-deduct stock (hybrid consumption)."
+      />
 
       <form action={saveDailySales} className="space-y-5">
         <Card title="Day & Revenue">
@@ -92,7 +95,9 @@ export default async function SalesEntryPage({
 
         {menuItems.length > 0 && (
           <Card title="Item-wise Quantities Sold (optional)">
-            <p className="mb-3 text-xs text-muted">Only active menu items are listed. Leave blank for items not sold today.</p>
+            <p className="mb-3 text-xs text-muted">
+              Only active menu items are listed. Quantities for dishes with recipes auto-deduct ingredient stock when you save.
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {menuItems.map((mi) => (
                 <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">

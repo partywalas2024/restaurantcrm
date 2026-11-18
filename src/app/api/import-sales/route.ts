@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { classifyChannel, classifyPayment, type SalesField } from "@/lib/sales-import";
 import { apiRestaurantGuard } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
+import { applyRecipeConsumptionForDay } from "@/lib/auto-consumption";
 
 function parseDate(value: string): Date | null {
   const trimmed = value.trim();
@@ -172,6 +173,8 @@ export async function POST(req: NextRequest) {
       await prisma.menuItemSale.createMany({ data: itemRows });
       itemSalesImported += itemRows.length;
     }
+
+    await applyRecipeConsumptionForDay(user.restaurantId, dailySales.id);
   }
 
   await logActivity(

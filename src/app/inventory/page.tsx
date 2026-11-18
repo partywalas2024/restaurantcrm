@@ -53,7 +53,7 @@ export default async function InventoryPage({
     <div>
       <PageHeader
         title="Inventory Management"
-        description="Stock from purchases minus returns, usage and physical counts. Record usage or a count from Consumption to keep it true."
+        description="Stock from purchases minus returns, recipe auto-use from sales, manual usage and physical counts. Count weekly/monthly to keep it true."
         actions={<ExportButton kind="products" />}
       />
 

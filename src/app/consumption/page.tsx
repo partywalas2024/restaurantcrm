@@ -1,24 +1,28 @@
 import Link from "next/link";
-import { Flame, Flag, PackageX, Hourglass, Wallet } from "lucide-react";
+import { Flame, Flag, PackageX, Hourglass, Wallet, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { MonthSelect } from "@/components/MonthSelect";
 import { StatCard } from "@/components/StatCard";
 import { Card, EmptyState } from "@/components/Card";
 import { Badge } from "@/components/Badge";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { getConsumptionOverview, FLAG_META } from "@/lib/consumption";
 import { getAvailableBusinessMonths } from "@/lib/sales";
 import { requireRestaurantUser } from "@/lib/auth";
+import { isOwner } from "@/lib/roles";
 import { formatINR, formatMonth, formatNumber } from "@/lib/format";
+import { syncRecipeConsumptionFromSales } from "@/lib/consumption-actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConsumptionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; flagged?: string }>;
+  searchParams: Promise<{ month?: string; flagged?: string; synced?: string; scanned?: string }>;
 }) {
   const params = await searchParams;
   const user = await requireRestaurantUser();
+  const owner = isOwner(user.role);
   const months = await getAvailableBusinessMonths(user.restaurantId);
   const thisMonth = new Date().toISOString().slice(0, 7);
   const monthList = months.includes(thisMonth) ? months : [thisMonth, ...months];
@@ -34,9 +38,29 @@ export default async function ConsumptionPage({
     <div>
       <PageHeader
         title="Product Consumption"
-        description={`${formatMonth(`${month}-01`)} — what was bought, what was used, and what the recipes say should have been used`}
-        actions={<MonthSelect months={monthList} value={month} />}
+        description={`${formatMonth(`${month}-01`)} — hybrid: recipes auto-deduct from item-wise sales; log extras manually; count stock to correct reality`}
+        actions={
+          <>
+            <MonthSelect months={monthList} value={month} />
+            {owner && (
+              <form action={syncRecipeConsumptionFromSales}>
+                <ConfirmButton
+                  message="Re-apply recipe auto-consumption for every sales day that has item quantities? Manual usage and stock counts are left alone."
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted"
+                >
+                  <RefreshCw size={14} /> Sync from sales
+                </ConfirmButton>
+              </form>
+            )}
+          </>
+        }
       />
+
+      {params.synced !== undefined && (
+        <p className="mb-4 rounded-lg border border-info/30 bg-info-bg px-3 py-2 text-xs text-info">
+          Synced recipe auto-consumption for {params.synced} of {params.scanned ?? "?"} sales day(s). New item-wise sales will keep updating stock automatically.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Purchases This Month" value={formatINR(totals.purchaseSpend)} icon={Wallet} />
@@ -48,9 +72,10 @@ export default async function ConsumptionPage({
       <Card className="mt-6">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="max-w-3xl text-xs text-muted">
-            <strong>Bought</strong> comes from bills. <strong>Used</strong> is what staff log in the kitchen, <strong>Wasted</strong> is from the Waste page,
-            and <strong>Recipes expect</strong> is sales × each dish&apos;s recipe. A <strong>count variance</strong> is what a physical stock count found
-            versus the books (negative = missing). Open a product to log usage or count its stock.
+            <strong>Bought</strong> comes from bills. <strong>Used</strong> is recipe auto-deductions from item-wise sales plus any manual kitchen logs.
+            <strong> Wasted</strong> is from the Waste page. <strong>Recipes expect</strong> is sales × each dish&apos;s recipe (should match auto use when recipes are complete).
+            A <strong>count variance</strong> is physical count vs books (negative = missing) — do this weekly/monthly to correct reality.
+            Open a product to log extras or count stock.
           </p>
           <Link
             href={onlyFlagged ? `/consumption?month=${month}` : `/consumption?month=${month}&flagged=1`}

@@ -12,6 +12,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { monthKey } from "@/lib/format";
+import { isAutoRecipeNote } from "@/lib/auto-consumption";
 import type { ProductCategory } from "@/generated/prisma/enums";
 
 export type LedgerType = "PURCHASE" | "RETURN" | "USAGE" | "ADJUSTMENT" | "WASTE";
@@ -86,11 +87,41 @@ export async function getProductLedger(restaurantId: string, productId: string, 
         rate: l.rate, amount: isReturn ? -l.amount : l.amount, affectsStock: true,
       };
     }),
-    ...moves.map<Raw>((m) =>
-      m.type === "CONSUMPTION"
-        ? { key: `M-${m.id}`, date: m.date, type: "USAGE", title: "Used in kitchen", note: m.notes, vendor: null, vendorId: null, link: `/consumption/${productId}`, qtyIn: 0, qtyOut: -m.quantity, rate: null, amount: null, affectsStock: true }
-        : { key: `M-${m.id}`, date: m.date, type: "ADJUSTMENT", title: m.quantity >= 0 ? "Stock adjusted up" : "Stock adjusted down", note: m.notes, vendor: null, vendorId: null, link: `/consumption/${productId}`, qtyIn: Math.max(m.quantity, 0), qtyOut: Math.max(-m.quantity, 0), rate: null, amount: null, affectsStock: true },
-    ),
+    ...moves.map<Raw>((m) => {
+      const auto = isAutoRecipeNote(m.notes);
+      if (m.type === "CONSUMPTION") {
+        return {
+          key: `M-${m.id}`,
+          date: m.date,
+          type: "USAGE",
+          title: auto ? "Recipe auto from sales" : "Used in kitchen",
+          note: auto ? null : m.notes,
+          vendor: null,
+          vendorId: null,
+          link: `/consumption/${productId}`,
+          qtyIn: 0,
+          qtyOut: -m.quantity,
+          rate: null,
+          amount: null,
+          affectsStock: true,
+        };
+      }
+      return {
+        key: `M-${m.id}`,
+        date: m.date,
+        type: "ADJUSTMENT",
+        title: m.quantity >= 0 ? "Stock adjusted up" : "Stock adjusted down",
+        note: m.notes,
+        vendor: null,
+        vendorId: null,
+        link: `/consumption/${productId}`,
+        qtyIn: Math.max(m.quantity, 0),
+        qtyOut: Math.max(-m.quantity, 0),
+        rate: null,
+        amount: null,
+        affectsStock: true,
+      };
+    }),
     ...waste.map<Raw>((w) => ({
       key: `W-${w.id}`, date: w.date, type: "WASTE", title: "Waste logged", note: w.reason ?? w.notes, vendor: null, vendorId: null, link: "/waste",
       qtyIn: 0, qtyOut: w.quantity, rate: null, amount: w.estimatedCost > 0 ? w.estimatedCost : null, affectsStock: false,

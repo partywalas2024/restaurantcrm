@@ -7,25 +7,30 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRestaurantUser, requireRestaurantAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
+import { backfillRecipeConsumption, isAutoRecipeNote } from "@/lib/auto-consumption";
 
-function revalidateConsumption(productId: string) {
+function revalidateConsumption(productId?: string) {
   revalidatePath("/consumption");
-  revalidatePath(`/consumption/${productId}`);
+  if (productId) revalidatePath(`/consumption/${productId}`);
   revalidatePath("/inventory");
   revalidatePath("/products");
+  revalidatePath("/ledger");
   revalidatePath("/");
 }
 
-/** Records stock used in the kitchen. Stock goes down; the movement is kept so it can be audited or undone. */
+/** Records stock used in the kitchen (manual). Recipe dishes already auto-deduct from item-wise sales — use this for extras, prep, or products without recipes. */
 export async function logUsage(formData: FormData) {
   const user = await requireRestaurantUser();
   const productId = String(formData.get("productId"));
   const quantity = Number(formData.get("quantity"));
   const date = new Date(String(formData.get("date")));
-  const notes = String(formData.get("notes") ?? "").trim() || null;
+  let notes = String(formData.get("notes") ?? "").trim() || null;
+  // Keep AUTO_RECIPE: notes reserved for sales-driven rows so reverse/re-apply stays correct.
+  if (isAutoRecipeNote(notes)) notes = `Manual — ${notes}`;
 
   if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantity used must be a positive number.");
   if (Number.isNaN(date.getTime())) throw new Error("Pick a valid date.");
@@ -39,6 +44,24 @@ export async function logUsage(formData: FormData) {
   ]);
   await logActivity(user, "CREATE", "Consumption", productId, `Logged usage of ${quantity} ${product.unit} ${product.name}${notes ? ` — ${notes}` : ""}`);
   revalidateConsumption(productId);
+}
+
+/**
+ * Owner: refresh auto recipe deductions for all past item-wise sales days.
+ * Safe to re-run — each day is reversed then re-applied; manual usage is left alone.
+ */
+export async function syncRecipeConsumptionFromSales() {
+  const user = await requireRestaurantAdmin();
+  const result = await backfillRecipeConsumption(user.restaurantId);
+  await logActivity(
+    user,
+    "UPDATE",
+    "Consumption",
+    null,
+    `Synced recipe auto-consumption from sales: ${result.daysApplied}/${result.daysScanned} day(s), ${result.productsTouched} product movement(s)`,
+  );
+  revalidateConsumption();
+  redirect(`/consumption?synced=${result.daysApplied}&scanned=${result.daysScanned}`);
 }
 
 /** Records a physical count: stock is set to what was counted and the gap versus the books is kept as variance. */

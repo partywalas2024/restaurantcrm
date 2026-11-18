@@ -16,13 +16,14 @@
 
 import { prisma } from "@/lib/prisma";
 import { monthKey } from "@/lib/format";
+import { autoRecipeLabel, isAutoRecipeNote } from "@/lib/auto-consumption";
 
 export type ConsumptionFlag = "SHRINKAGE" | "OVER_USE" | "UNDER_LOGGED" | "OK";
 export const FLAG_META: Record<ConsumptionFlag, { label: string; tone: "ok" | "warn" | "crit" | "info"; hint: string }> = {
-  SHRINKAGE: { label: "Stock missing", tone: "crit", hint: "A physical count found less than the books said." },
-  OVER_USE: { label: "Over recipe", tone: "warn", hint: "Used + wasted is more than 15% above what the recipes expect." },
-  UNDER_LOGGED: { label: "Usage not logged", tone: "info", hint: "Recipes say more was used than has been logged." },
-  OK: { label: "On track", tone: "ok", hint: "Logged use is in line with recipes." },
+  SHRINKAGE: { label: "Stock missing", tone: "crit", hint: "A physical count found less than the books said — recount or check theft/waste." },
+  OVER_USE: { label: "Over recipe", tone: "warn", hint: "Used + wasted is more than 15% above what the recipes expect (manual extras or rich portions)." },
+  UNDER_LOGGED: { label: "Below recipe", tone: "info", hint: "Recipes expect more than was deducted — check incomplete recipes or missing item-wise sales." },
+  OK: { label: "On track", tone: "ok", hint: "Auto + manual use is in line with recipes." },
 };
 
 export type RateBasis = "logged" | "recipes" | "purchases";
@@ -239,7 +240,13 @@ export async function getProductConsumption(restaurantId: string, productId: str
   return {
     product,
     monthly,
-    usage: usage.slice(0, 25).map((m) => ({ id: m.id, date: m.date, quantity: -m.quantity, notes: m.notes })),
+    usage: usage.slice(0, 25).map((m) => ({
+      id: m.id,
+      date: m.date,
+      quantity: -m.quantity,
+      notes: isAutoRecipeNote(m.notes) ? autoRecipeLabel(m.notes) : m.notes,
+      isAuto: isAutoRecipeNote(m.notes),
+    })),
     counts: counts.slice(0, 25),
     priceHistory,
     priceRange: rates.length > 0 ? { min: Math.min(...rates), max: Math.max(...rates) } : null,

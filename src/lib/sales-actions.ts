@@ -19,6 +19,7 @@ import { requireRestaurantUser, requireRestaurantAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
 import { normalizeProductName } from "@/lib/normalize";
 import { inferCategory } from "@/lib/categories";
+import { applyRecipeConsumptionForDay, reverseRecipeConsumptionForDay } from "@/lib/auto-consumption";
 import type { LaborCategory } from "@/generated/prisma/enums";
 
 function revalidateSalesPages() {
@@ -27,6 +28,9 @@ function revalidateSalesPages() {
   revalidatePath("/profitability");
   revalidatePath("/");
   revalidatePath("/analytics");
+  revalidatePath("/consumption");
+  revalidatePath("/inventory");
+  revalidatePath("/ledger");
 }
 
 export type MenuFormState = { error?: string };
@@ -258,6 +262,9 @@ export async function saveDailySales(formData: FormData) {
     await prisma.menuItemSale.createMany({ data: itemRows });
   }
 
+  // Hybrid consumption: deduct (or refresh) recipe stock for this day's item sales.
+  await applyRecipeConsumptionForDay(user.restaurantId, dailySales.id);
+
   revalidateSalesPages();
   redirect("/sales");
 }
@@ -267,6 +274,7 @@ export async function deleteDailySales(formData: FormData) {
   const id = String(formData.get("id"));
   const existing = await prisma.dailySales.findFirst({ where: { id, restaurantId: user.restaurantId } });
   if (!existing) throw new Error("Sales record not found.");
+  await reverseRecipeConsumptionForDay(user.restaurantId, id);
   await prisma.dailySales.delete({ where: { id } });
   revalidateSalesPages();
 }

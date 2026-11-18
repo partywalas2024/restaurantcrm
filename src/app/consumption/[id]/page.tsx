@@ -62,8 +62,10 @@ export default async function ProductConsumptionPage({ params }: { params: Promi
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Card title="Log Usage">
-          <p className="mb-3 text-xs text-muted">Record stock taken for the kitchen. It comes off the books straight away.</p>
+        <Card title="Log Usage (manual)">
+          <p className="mb-3 text-xs text-muted">
+            Recipe dishes already deduct stock when item-wise sales are saved. Use this for extras, prep, or products without recipes.
+          </p>
           <form action={logUsage} className="space-y-3">
             <input type="hidden" name="productId" value={product.id} />
             <div className="grid grid-cols-2 gap-3">
@@ -86,7 +88,8 @@ export default async function ProductConsumptionPage({ params }: { params: Promi
 
         <Card title="Physical Stock Count">
           <p className="mb-3 text-xs text-muted">
-            Count what is actually on the shelf. The books say <strong>{formatNumber(product.currentStock, 2)} {product.unit}</strong>; the gap is saved as variance and stock is corrected.
+            Weekly/monthly check: count what is on the shelf. The books say <strong>{formatNumber(product.currentStock, 2)} {product.unit}</strong>;
+            the gap is saved as variance and stock is corrected to reality.
           </p>
           <form action={recordStockCount} className="space-y-3">
             <input type="hidden" name="productId" value={product.id} />
@@ -157,19 +160,27 @@ export default async function ProductConsumptionPage({ params }: { params: Promi
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card title="Usage Log">
           {usage.length === 0 ? (
-            <EmptyState title="No usage logged yet" />
+            <EmptyState title="No usage yet" description="Auto deductions appear when item-wise sales hit dishes with recipes; manual logs appear here too." />
           ) : (
             <div className="divide-y divide-border">
               {usage.map((u) => (
                 <div key={u.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <div className="min-w-0">
-                    <p className="font-medium">{formatNumber(u.quantity, 2)} {product.unit}</p>
+                    <p className="flex flex-wrap items-center gap-2 font-medium">
+                      {formatNumber(u.quantity, 2)} {product.unit}
+                      {u.isAuto ? <Badge tone="info">Auto</Badge> : <Badge tone="neutral">Manual</Badge>}
+                    </p>
                     <p className="truncate text-xs text-muted">{formatDate(u.date)}{u.notes ? ` · ${u.notes}` : ""}</p>
                   </div>
                   {owner && (
                     <form action={deleteUsage}>
                       <input type="hidden" name="id" value={u.id} />
-                      <ConfirmButton message="Remove this usage entry? The stock goes back up." className="text-xs text-crit hover:underline">Delete</ConfirmButton>
+                      <ConfirmButton
+                        message={u.isAuto ? "Remove this auto recipe deduction? Stock goes back up — saving that sales day again will recreate it." : "Remove this usage entry? The stock goes back up."}
+                        className="text-xs text-crit hover:underline"
+                      >
+                        Delete
+                      </ConfirmButton>
                     </form>
                   )}
                 </div>
