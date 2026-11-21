@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
-import { getVendorLedger } from "@/lib/data";
+import { getVendorLedger, ledgerStatementRows } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { apiRestaurantGuard } from "@/lib/auth";
 
@@ -17,11 +17,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "vendorId is required." }, { status: 400 });
   }
 
-  const ledger = await getVendorLedger(user.restaurantId, vendorId).catch(() => null);
+  const ledger = await getVendorLedger(user.restaurantId, vendorId, {
+    from: req.nextUrl.searchParams.get("from") || undefined,
+    to: req.nextUrl.searchParams.get("to") || undefined,
+  }).catch(() => null);
   if (!ledger) {
     return NextResponse.json({ error: "Vendor not found." }, { status: 404 });
   }
-  const { vendor, entries, totalDebit, totalCredit, balance } = ledger;
+  const { vendor, totalDebit, totalCredit, balance, period } = ledger;
+  const statement = ledgerStatementRows(ledger);
 
   const rows: (string | number)[][] = [
     ["Statement of Account"],
@@ -29,20 +33,23 @@ export async function GET(req: NextRequest) {
     ["Phone", vendor.phone ?? ""],
     ["Address", vendor.address ?? ""],
     ["GSTIN", vendor.gstin ?? ""],
+    ...(period ? [["Period", period]] : []),
     ["Statement Generated", formatDate(new Date())],
     [],
     ["Date", "Particulars", "Debit (INR)", "Credit (INR)", "Balance (INR)"],
-    ...entries.map((e) => [
-      formatDate(e.date),
+    ...statement.map((e) => [
+      e.date,
       e.particulars,
       e.debit > 0 ? e.debit.toFixed(2) : "",
       e.credit > 0 ? e.credit.toFixed(2) : "",
       e.balance.toFixed(2),
     ]),
     [],
-    ["", "Total Billed", totalDebit.toFixed(2), "", ""],
-    ["", "Total Paid / Credited", "", totalCredit.toFixed(2), ""],
-    ["", balance >= 0 ? "Closing Balance (You Owe)" : "Closing Balance (Vendor Owes You)", "", "", Math.abs(balance).toFixed(2)],
+    ["", period ? "Billed in period" : "Total Billed", totalDebit.toFixed(2), "", ""],
+    ["", period ? "Paid in period" : "Total Paid / Credited", "", totalCredit.toFixed(2), ""],
+    ["", balance >= 0
+      ? period ? "Current outstanding (You Owe)" : "Closing Balance (You Owe)"
+      : period ? "Current outstanding (Vendor Owes You)" : "Closing Balance (Vendor Owes You)", "", "", Math.abs(balance).toFixed(2)],
   ];
 
   const csv = Papa.unparse(rows);

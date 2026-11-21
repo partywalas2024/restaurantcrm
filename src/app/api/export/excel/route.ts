@@ -10,6 +10,7 @@ import {
   getVendors,
   getProducts,
   getVendorLedger,
+  ledgerStatementRows,
   getBalanceSheet,
   getOverview,
   getInsights,
@@ -170,20 +171,30 @@ export async function GET(req: NextRequest) {
   if (kind === "ledger") {
     const vendorId = sp.get("vendorId");
     if (!vendorId) return NextResponse.json({ error: "vendorId is required." }, { status: 400 });
-    const ledger = await getVendorLedger(user.restaurantId, vendorId).catch(() => null);
+    const ledger = await getVendorLedger(user.restaurantId, vendorId, {
+      from: sp.get("from") || undefined,
+      to: sp.get("to") || undefined,
+    }).catch(() => null);
     if (!ledger) return NextResponse.json({ error: "Vendor not found." }, { status: 404 });
-    const { vendor, entries, totalDebit, totalCredit, balance } = ledger;
+    const { vendor, totalDebit, totalCredit, balance, period } = ledger;
+    const statement = ledgerStatementRows(ledger);
 
     const summary = addSummarySheet(wb, "Statement", "Statement of Account");
     summary.addRow(["Vendor", vendor.name]);
     summary.addRow(["Phone", vendor.phone ?? ""]);
     summary.addRow(["Address", vendor.address ?? ""]);
     summary.addRow(["GSTIN", vendor.gstin ?? ""]);
+    if (period) summary.addRow(["Period", period]);
     summary.addRow(["Statement Generated", formatDate(new Date())]);
     summary.addRow([]);
-    summary.addRow(["Total Billed", totalDebit]);
-    summary.addRow(["Total Paid / Credited", totalCredit]);
-    summary.addRow([balance >= 0 ? "Closing Balance (You Owe)" : "Closing Balance (Vendor Owes You)", Math.abs(balance)]);
+    summary.addRow([period ? "Billed in period" : "Total Billed", totalDebit]);
+    summary.addRow([period ? "Paid in period" : "Total Paid / Credited", totalCredit]);
+    summary.addRow([
+      balance >= 0
+        ? period ? "Current outstanding (You Owe)" : "Closing Balance (You Owe)"
+        : period ? "Current outstanding (Vendor Owes You)" : "Closing Balance (Vendor Owes You)",
+      Math.abs(balance),
+    ]);
 
     addTableSheet(
       wb,
@@ -195,8 +206,8 @@ export async function GET(req: NextRequest) {
         { header: "Credit (INR)", key: "credit", width: 14, currency: true },
         { header: "Balance (INR)", key: "balance", width: 14, currency: true },
       ],
-      entries.map((e) => ({
-        date: formatDate(e.date),
+      statement.map((e) => ({
+        date: e.date,
         particulars: e.particulars,
         debit: e.debit || "",
         credit: e.credit || "",

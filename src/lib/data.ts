@@ -12,7 +12,7 @@
 // `requireRestaurantUser()` is what supplies the id in the first place.
 
 import { prisma } from "@/lib/prisma";
-import { monthKey, formatINR } from "@/lib/format";
+import { monthKey, formatDate, formatINR } from "@/lib/format";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments";
 import type { ProductCategory } from "@/generated/prisma/enums";
@@ -78,7 +78,63 @@ export type LedgerEntry = {
   balance: number;
 };
 
-export async function getVendorLedger(restaurantId: string, vendorId: string) {
+export type VendorLedgerFilters = {
+  from?: string;
+  to?: string;
+};
+
+/** YYYY-MM-DD from a query string, or undefined when it is missing or invalid. */
+export function cleanDay(value?: string | null): string | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const time = new Date(`${value}T00:00:00.000Z`).getTime();
+  return Number.isNaN(time) ? undefined : value;
+}
+
+function dayStart(day: string): Date {
+  return new Date(`${day}T00:00:00.000Z`);
+}
+
+export function ledgerPeriodLabel(from?: string, to?: string): string | null {
+  if (from && to) return `${formatDate(from)} – ${formatDate(to)}`;
+  if (from) return `From ${formatDate(from)}`;
+  if (to) return `Up to ${formatDate(to)}`;
+  return null;
+}
+
+export type LedgerStatementRow = {
+  date: string;
+  particulars: string;
+  debit: number;
+  credit: number;
+  balance: number;
+};
+
+/** Ledger rows for a statement, with the carried-forward balance as the first line when a From date is set. */
+export function ledgerStatementRows(ledger: {
+  openingBalance: number | null;
+  from?: string;
+  entries: LedgerEntry[];
+}): LedgerStatementRow[] {
+  const rows = ledger.entries.map((e) => ({
+    date: formatDate(e.date),
+    particulars: e.particulars,
+    debit: e.debit,
+    credit: e.credit,
+    balance: e.balance,
+  }));
+  if (ledger.openingBalance !== null) {
+    rows.unshift({
+      date: ledger.from ? formatDate(ledger.from) : "",
+      particulars: "Opening balance",
+      debit: 0,
+      credit: 0,
+      balance: ledger.openingBalance,
+    });
+  }
+  return rows;
+}
+
+export async function getVendorLedger(restaurantId: string, vendorId: string, filters?: VendorLedgerFilters) {
   const vendor = await prisma.vendor.findFirst({ where: { id: vendorId, restaurantId } });
   if (!vendor) return null;
 
@@ -127,16 +183,42 @@ export async function getVendorLedger(restaurantId: string, vendorId: string) {
 
   raw.sort((a, b) => a.date.getTime() - b.date.getTime() || a.createdAt.getTime() - b.createdAt.getTime());
 
-  let balance = 0;
-  const entries: LedgerEntry[] = raw.map((r) => {
-    balance += r.debit - r.credit;
-    return { id: r.id, date: r.date, type: r.type, particulars: r.particulars, debit: r.debit, credit: r.credit, balance };
+  let running = 0;
+  const all: LedgerEntry[] = raw.map((r) => {
+    running += r.debit - r.credit;
+    return { id: r.id, date: r.date, type: r.type, particulars: r.particulars, debit: r.debit, credit: r.credit, balance: running };
   });
+
+  const from = cleanDay(filters?.from);
+  const to = cleanDay(filters?.to);
+  const fromTime = from ? dayStart(from).getTime() : null;
+  const toTime = to ? dayStart(to).getTime() + 86400000 : null;
+  const inRange = (date: Date) => {
+    const time = date.getTime();
+    if (fromTime !== null && time < fromTime) return false;
+    if (toTime !== null && time >= toTime) return false;
+    return true;
+  };
+
+  const entries = fromTime === null && toTime === null ? all : all.filter((e) => inRange(e.date));
+  const openingBalance =
+    fromTime === null ? null : (all.filter((e) => e.date.getTime() < fromTime).at(-1)?.balance ?? 0);
 
   const totalDebit = entries.reduce((s, e) => s + e.debit, 0);
   const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
 
-  return { vendor, entries, totalDebit, totalCredit, balance };
+  return {
+    vendor,
+    entries,
+    openingBalance,
+    totalDebit,
+    totalCredit,
+    // Always the real outstanding, even when the table is limited to a date range.
+    balance: running,
+    from,
+    to,
+    period: ledgerPeriodLabel(from, to),
+  };
 }
 
 export async function getBalanceSheet(restaurantId: string) {

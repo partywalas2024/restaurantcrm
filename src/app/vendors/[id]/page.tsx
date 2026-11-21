@@ -6,7 +6,7 @@ import { Card, EmptyState } from "@/components/Card";
 import { StatCard } from "@/components/StatCard";
 import { LedgerExportButtons } from "@/components/LedgerExportButtons";
 import { ReceiptButton } from "@/components/ReceiptButton";
-import { getVendorLedger } from "@/lib/data";
+import { cleanDay, getVendorLedger } from "@/lib/data";
 import { getRestaurant } from "@/lib/settings";
 import { requireRestaurantUser } from "@/lib/auth";
 import { formatDate, formatINR } from "@/lib/format";
@@ -22,12 +22,17 @@ export default async function VendorDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; to?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const sp = await searchParams;
+  const from = cleanDay(sp.from);
+  const to = cleanDay(sp.to);
   const user = await requireRestaurantUser();
-  const [ledger, profile] = await Promise.all([getVendorLedger(user.restaurantId, id), getRestaurant(user.restaurantId)]);
+  const [ledger, profile] = await Promise.all([
+    getVendorLedger(user.restaurantId, id, { from, to }),
+    getRestaurant(user.restaurantId),
+  ]);
   if (!ledger) notFound();
   const { vendor, entries, totalDebit, totalCredit, balance } = ledger;
   const owner = isOwner(user.role);
@@ -61,29 +66,69 @@ export default async function VendorDetailPage({
                 </form>
               </>
             )}
-            <LedgerExportButtons vendorId={vendor.id} vendorName={vendor.name} restaurant={profile} />
+            <LedgerExportButtons vendorId={vendor.id} vendorName={vendor.name} restaurant={profile} from={ledger.from} to={ledger.to} />
           </>
         }
       />
 
-      {error && <p className="mb-4 rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">{error}</p>}
+      {sp.error && <p className="mb-4 rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">{sp.error}</p>}
+
+      <Card className="mb-6">
+        <form method="GET" className="grid grid-cols-2 items-end gap-3 sm:grid-cols-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="v-from">From</label>
+            <input id="v-from" type="date" name="from" defaultValue={from} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="v-to">To</label>
+            <input id="v-to" type="date" name="to" defaultValue={to} className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm" />
+          </div>
+          <div className="col-span-2 flex gap-2">
+            <button type="submit" className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark">
+              Apply Filters
+            </button>
+            <Link href={`/vendors/${vendor.id}`} className="rounded-lg border border-border px-4 py-1.5 text-sm font-medium hover:bg-surface-muted">
+              Reset
+            </Link>
+          </div>
+        </form>
+      </Card>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Total Billed" value={formatINR(totalDebit)} icon={Receipt} />
-        <StatCard label="Total Paid / Credited" value={formatINR(totalCredit)} icon={CreditCard} tone="ok" />
+        <StatCard
+          label={ledger.period ? "Billed in period" : "Total Billed"}
+          value={formatINR(totalDebit)}
+          icon={Receipt}
+          sublabel={ledger.period ?? undefined}
+        />
+        <StatCard
+          label={ledger.period ? "Paid in period" : "Total Paid / Credited"}
+          value={formatINR(totalCredit)}
+          icon={CreditCard}
+          tone="ok"
+          sublabel={ledger.period ?? undefined}
+        />
         <StatCard
           label={balance > 0.005 ? "You Owe" : balance < -0.005 ? "Vendor Owes You" : "Settled"}
           value={formatINR(Math.abs(balance))}
           icon={Scale}
           tone={balance > 0.005 ? "warn" : balance < -0.005 ? "info" : "ok"}
+          sublabel={ledger.period ? "Current outstanding" : undefined}
         />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <Card title="Ledger" className="lg:col-span-2">
-          {entries.length === 0 ? (
-            <EmptyState title="No transactions yet" />
+        <Card title={ledger.period ? `Ledger · ${ledger.period}` : "Ledger"} className="lg:col-span-2">
+          {entries.length === 0 && ledger.openingBalance === null ? (
+            <EmptyState
+              title={ledger.period ? "No transactions in this period" : "No transactions yet"}
+              description={ledger.period ? "Try a wider date range, or reset to see the full ledger." : undefined}
+            />
           ) : (
             <div className="overflow-x-auto">
+              {ledger.period && entries.length === 0 && (
+                <p className="mb-3 text-xs text-muted">No bills or payments in this period. The balance below was already on the books before the From date.</p>
+              )}
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs font-medium text-muted">
@@ -96,6 +141,16 @@ export default async function VendorDetailPage({
                   </tr>
                 </thead>
                 <tbody>
+                  {ledger.openingBalance !== null && (
+                    <tr className="border-b border-border/60">
+                      <td className="py-2 pr-3 whitespace-nowrap text-muted">{ledger.from ? formatDate(ledger.from) : "—"}</td>
+                      <td className="py-2 pr-3 text-muted">Opening balance</td>
+                      <td className="py-2 pr-3 text-right">—</td>
+                      <td className="py-2 pr-3 text-right">—</td>
+                      <td className="py-2 pr-3 text-right font-medium">{formatINR(ledger.openingBalance, { decimals: true })}</td>
+                      <td />
+                    </tr>
+                  )}
                   {entries.map((e) => (
                     <tr key={e.id} className="border-b border-border/60 last:border-0">
                       <td className="py-2 pr-3 whitespace-nowrap text-muted">{formatDate(e.date)}</td>
